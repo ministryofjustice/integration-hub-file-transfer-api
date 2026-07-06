@@ -5,6 +5,10 @@ venv/
 env/
 .DS_STORE
 .vscode
+.idea/
+*.iml
 *.code-workspace
 *.sha256
 terraform.tfstate
+**/__pycache__/
+*.pyc
