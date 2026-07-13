@@ -2,11 +2,9 @@
 
 This repository contains the Lambda application code, OpenAPI contract, and API request collections for the Integration Hub Managed File Transfer API.
 
-The AWS infrastructure for this API remains in `ministryofjustice/modernisation-platform-environments` under `terraform/environments/integration-hub/api-platform`. That Terraform component packages the code from this repository during plan/apply.
+The AWS infrastructure for this API stays in `ministryofjustice/modernisation-platform-environments` under `terraform/environments/integration-hub-api`.
 
-The infrastructure for this component stays in `modernisation-platform-environments`, while this repository owns the Lambda application code, OpenAPI contract, and API request collections.
-
-For local Terraform work, clone this repository alongside `modernisation-platform-environments` so the default source-path lookup resolves `../integration-hub-file-transfer-api`. In GitHub Actions, the `integration-hub` workflow checks this repository out automatically for the `api-platform` component.
+This repository owns deployment of the live Lambda application code. The environments repository now creates only bootstrap Lambda handlers so Terraform can stay infrastructure-only.
 
 It now protects the API with:
 
@@ -105,15 +103,6 @@ It now protects the API with:
 
 Terraform still runs from `modernisation-platform-environments`. Apply the Managed File Transfer stack first so it creates the SSM parameters for the upload bucket consumed by the API stack.
 
-Before running Terraform for this component locally, make sure the application repository is available next to this repository:
-
-```bash
-cd ..
-git clone git@github.com:ministryofjustice/integration-hub-file-transfer-api.git
-```
-
-Apply the Managed File Transfer stack first so it creates the SSM parameters for the upload bucket (consumed by this stack):
-
 ```bash
 cd terraform/environments/integration-hub/managed-file-transfer
 terraform init -reconfigure
@@ -124,10 +113,22 @@ terraform plan
 Then initialise and plan the API platform stack:
 
 ```bash
-cd terraform/environments/integration-hub/api-platform
+cd terraform/environments/integration-hub-api
 terraform init -reconfigure
 terraform workspace select integration-hub-development
 terraform plan
+```
+
+Phase 1 note: the active `integration-hub-api` Terraform folder still uses the legacy `integration-hub/api-platform` backend path and workspace name until the state migration is completed.
+
+## Lambda deployment
+
+Use the `deploy-development` GitHub Actions workflow in this repository to publish the real Lambda code into the development account after the infrastructure has been applied.
+
+That workflow assumes the dedicated IAM role created by `modernisation-platform-environments` output `app_deploy_role_arn`. The role trust is scoped to this repository via GitHub OIDC with a subject like:
+
+```text
+repo:ministryofjustice/integration-hub-file-transfer-api:environment:integration-hub-development*
 ```
 
 ## Authentication configuration
