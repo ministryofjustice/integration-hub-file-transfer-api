@@ -297,6 +297,9 @@ def lambda_handler(event, _context):
         return _response(200, _swagger_html("/openapi.yaml"), "text/html; charset=utf-8")
 
     if path == "/openapi.yaml":
-        return _response(200, OPENAPI_PATH.read_text(encoding="utf-8"), "application/yaml; charset=utf-8")
+        try:
+            return _response(200, OPENAPI_PATH.read_text(encoding="utf-8"), "application/yaml; charset=utf-8")
+        except FileNotFoundError:
+            return _response(500, "OpenAPI document not available", "text/plain; charset=utf-8")
 
     return _response(404, "Not found", "text/plain; charset=utf-8")
