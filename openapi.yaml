@@ -85,7 +85,7 @@ paths:
         '400':
           $ref: '#/components/responses/ErrorResponse'
         '401':
-          description: Authentication failed
+          $ref: '#/components/responses/ErrorResponse'
         '403':
           $ref: '#/components/responses/ErrorResponse'
         '404':
