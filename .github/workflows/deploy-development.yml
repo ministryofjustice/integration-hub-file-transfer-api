@@ -1,0 +1,60 @@
+name: deploy-development
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/deploy-development.yml"
+      - "lambda/**"
+      - "openapi.yaml"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: integration-hub-development
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@517a711dbcd0e402f90c77e7e2f81e849156e31d # v6
+        with:
+          role-to-assume: arn:aws:iam::508564776517:role/modernisation-platform-oidc-cicd
+          aws-region: eu-west-2
+
+      - name: Package Lambda Archives
+        run: |
+          mkdir -p build
+          zip -q -j build/request-upload-ticket.zip lambda/request-upload-ticket/lambda_function.py
+          zip -q -j build/request-authorizer.zip lambda/request-authorizer/lambda_function.py
+          zip -q -j build/request-docs.zip lambda/request-docs/lambda_function.py openapi.yaml
+
+      - name: Deploy Upload Ticket Lambda
+        run: |
+          aws lambda update-function-code \
+            --function-name integration-hub-api-platform-upload-ticket \
+            --zip-file fileb://build/request-upload-ticket.zip
+          aws lambda wait function-updated-v2 \
+            --function-name integration-hub-api-platform-upload-ticket
+
+      - name: Deploy Authorizer Lambda
+        run: |
+          aws lambda update-function-code \
+            --function-name integration-hub-api-platform-authorizer \
+            --zip-file fileb://build/request-authorizer.zip
+          aws lambda wait function-updated-v2 \
+            --function-name integration-hub-api-platform-authorizer
+
+      - name: Deploy Docs Lambda
+        run: |
+          aws lambda update-function-code \
+            --function-name integration-hub-api-platform-docs \
+            --zip-file fileb://build/request-docs.zip
+          aws lambda wait function-updated-v2 \
+            --function-name integration-hub-api-platform-docs
