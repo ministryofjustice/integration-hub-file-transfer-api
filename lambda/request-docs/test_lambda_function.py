@@ -9,11 +9,8 @@ from unittest.mock import patch
 
 os.environ.setdefault("DOCS_BASIC_AUTH_SECRET_ID", "docs-secret")
 
-sys.modules.setdefault(
-    "boto3",
-    SimpleNamespace(
-        client=lambda _service_name: SimpleNamespace(),
-    ),
+sys.modules["boto3"] = SimpleNamespace(
+    client=lambda _service_name: SimpleNamespace(),
 )
 
 import lambda_function as handler
