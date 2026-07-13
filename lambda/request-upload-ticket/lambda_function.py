@@ -547,7 +547,7 @@ def _handle_create_transfer_ticket(event):
     if error_response:
         return error_response
 
-    max_upload_size_bytes = int(record.get("max_upload_size_bytes", 0))
+    max_upload_size_bytes = int(record.get("max_upload_size_bytes") or 0)
     error_response = _validate_file_size(size_bytes, max_upload_size_bytes)
     if error_response:
         return error_response
