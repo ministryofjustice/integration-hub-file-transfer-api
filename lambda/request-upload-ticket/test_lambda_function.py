@@ -16,15 +16,12 @@ os.environ.setdefault("MULTIPART_DEFAULT_PART_SIZE_BYTES", "67108864")
 os.environ.setdefault("MULTIPART_INITIAL_PRESIGN_PARTS", "10")
 os.environ.setdefault("MULTIPART_MAX_PARTS", "10000")
 
-sys.modules.setdefault(
-    "boto3",
-    SimpleNamespace(
-        client=lambda _service_name, **_kwargs: SimpleNamespace(),
-        resource=lambda _service_name, **_kwargs: SimpleNamespace(),
-    ),
+sys.modules["boto3"] = SimpleNamespace(
+    client=lambda _service_name, **_kwargs: SimpleNamespace(),
+    resource=lambda _service_name, **_kwargs: SimpleNamespace(),
 )
-sys.modules.setdefault("botocore", SimpleNamespace())
-sys.modules.setdefault("botocore.config", SimpleNamespace(Config=lambda **_kwargs: SimpleNamespace()))
+sys.modules["botocore"] = SimpleNamespace()
+sys.modules["botocore.config"] = SimpleNamespace(Config=lambda **_kwargs: SimpleNamespace())
 
 import lambda_function as handler
 
