@@ -179,7 +179,19 @@ def _resolve_expiry_seconds(request):
 
 def _validate_content_type(content_type, record):
     allowed_content_types = record.get("allowed_content_types", [])
-    if allowed_content_types and content_type not in allowed_content_types:
+    if not allowed_content_types:
+        return None
+
+    if not content_type:
+        return _response(
+            400,
+            {
+                "message": "contentType is required for this client",
+                "allowedContentTypes": allowed_content_types,
+            },
+        )
+
+    if content_type not in allowed_content_types:
         return _response(
             400,
             {
@@ -187,6 +199,7 @@ def _validate_content_type(content_type, record):
                 "allowedContentTypes": allowed_content_types,
             },
         )
+
     return None
 
 
