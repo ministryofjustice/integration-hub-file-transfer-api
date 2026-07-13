@@ -10,12 +10,9 @@ from unittest.mock import patch
 os.environ.setdefault("AUTH_PRINCIPALS_TABLE", "auth-principals")
 os.environ.setdefault("AUTH_ROLES_TABLE", "auth-roles")
 
-sys.modules.setdefault(
-    "boto3",
-    SimpleNamespace(
-        client=lambda _service_name: SimpleNamespace(),
-        resource=lambda _service_name: SimpleNamespace(),
-    ),
+sys.modules["boto3"] = SimpleNamespace(
+    client=lambda _service_name: SimpleNamespace(),
+    resource=lambda _service_name: SimpleNamespace(),
 )
 
 import lambda_function as handler
