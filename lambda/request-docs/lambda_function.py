@@ -2,6 +2,7 @@ import base64
 import binascii
 import hmac
 import json
+import logging
 import os
 from pathlib import Path
 
@@ -22,6 +23,18 @@ def _resolve_openapi_path():
 OPENAPI_PATH = _resolve_openapi_path()
 SECRETS_MANAGER = boto3.client("secretsmanager")
 DOCS_BASIC_AUTH_SECRET_ID = os.environ["DOCS_BASIC_AUTH_SECRET_ID"]
+LOGGER = logging.getLogger()
+LOGGER.setLevel(logging.INFO)
+
+
+def _log(level, message, **fields):
+    payload = {
+        "level": level,
+        "message": message,
+        "service": "integration-hub-api-docs",
+    }
+    payload.update({key: value for key, value in fields.items() if value not in (None, "")})
+    LOGGER.log(getattr(logging, level, logging.INFO), json.dumps(payload, default=str))
 
 
 def _response(status_code, body, content_type, extra_headers=None):
@@ -289,17 +302,26 @@ def _swagger_html(spec_url):
 
 def lambda_handler(event, _context):
     path = (event or {}).get("rawPath") or "/docs"
+    request_id = (event or {}).get("requestContext", {}).get("requestId")
 
     if not _is_authorized(event):
+        _log("WARNING", "Docs request denied", requestId=request_id, rawPath=path)
         return _unauthorized()
 
+    _log("INFO", "Docs request received", requestId=request_id, rawPath=path)
     if path in ("/docs", "/docs/"):
-        return _response(200, _swagger_html("/openapi.yaml"), "text/html; charset=utf-8")
+        response = _response(200, _swagger_html("/openapi.yaml"), "text/html; charset=utf-8")
+        _log("INFO", "Docs request handled", requestId=request_id, rawPath=path, statusCode=response["statusCode"])
+        return response
 
     if path == "/openapi.yaml":
         try:
-            return _response(200, OPENAPI_PATH.read_text(encoding="utf-8"), "application/yaml; charset=utf-8")
+            response = _response(200, OPENAPI_PATH.read_text(encoding="utf-8"), "application/yaml; charset=utf-8")
+            _log("INFO", "Docs request handled", requestId=request_id, rawPath=path, statusCode=response["statusCode"])
+            return response
         except FileNotFoundError:
+            _log("ERROR", "OpenAPI document not available", requestId=request_id, rawPath=path)
             return _response(500, "OpenAPI document not available", "text/plain; charset=utf-8")
 
+    _log("WARNING", "Docs request returned not found", requestId=request_id, rawPath=path)
     return _response(404, "Not found", "text/plain; charset=utf-8")

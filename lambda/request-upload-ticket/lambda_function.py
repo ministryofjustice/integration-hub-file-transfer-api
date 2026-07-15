@@ -1,5 +1,6 @@
 import base64
 import json
+import logging
 import math
 import os
 import posixpath
@@ -35,6 +36,18 @@ MULTIPART_MAX_PARTS = int(os.environ["MULTIPART_MAX_PARTS"])
 
 MIN_MULTIPART_PART_SIZE_BYTES = 5 * 1024 * 1024
 MULTIPART_SESSION_TTL_SECONDS = 7 * 24 * 60 * 60
+LOGGER = logging.getLogger()
+LOGGER.setLevel(logging.INFO)
+
+
+def _log(level, message, **fields):
+    payload = {
+        "level": level,
+        "message": message,
+        "service": "integration-hub-api-upload-ticket",
+    }
+    payload.update({key: value for key, value in fields.items() if value not in (None, "")})
+    LOGGER.log(getattr(logging, level, logging.INFO), json.dumps(payload, default=str))
 
 
 def _response(status_code, body):
@@ -733,14 +746,44 @@ def _handle_abort_multipart(event):
 
 def lambda_handler(event, _context):
     route_key = event.get("routeKey")
+    request_id = event.get("requestContext", {}).get("requestId")
+    principal = _principal_context(event)
 
-    if route_key == "POST /transfer-tickets":
-        return _handle_create_transfer_ticket(event)
-    if route_key == "POST /transfer-tickets/{transferTicket}/parts":
-        return _handle_presign_parts(event)
-    if route_key == "POST /transfer-tickets/{transferTicket}/complete":
-        return _handle_complete_multipart(event)
-    if route_key == "DELETE /transfer-tickets/{transferTicket}":
-        return _handle_abort_multipart(event)
+    _log(
+        "INFO",
+        "API request received",
+        routeKey=route_key,
+        requestId=request_id,
+        principalId=principal.get("principal_id"),
+        authType=principal.get("auth_type"),
+    )
 
-    return _response(404, {"message": f"Unsupported route '{route_key}'"})
+    try:
+        if route_key == "POST /transfer-tickets":
+            response = _handle_create_transfer_ticket(event)
+        elif route_key == "POST /transfer-tickets/{transferTicket}/parts":
+            response = _handle_presign_parts(event)
+        elif route_key == "POST /transfer-tickets/{transferTicket}/complete":
+            response = _handle_complete_multipart(event)
+        elif route_key == "DELETE /transfer-tickets/{transferTicket}":
+            response = _handle_abort_multipart(event)
+        else:
+            response = _response(404, {"message": f"Unsupported route '{route_key}'"})
+
+        _log(
+            "INFO",
+            "API request handled",
+            routeKey=route_key,
+            requestId=request_id,
+            statusCode=response.get("statusCode"),
+        )
+        return response
+    except Exception as exc:
+        _log(
+            "ERROR",
+            "Unhandled exception while handling API request",
+            routeKey=route_key,
+            requestId=request_id,
+            error=str(exc),
+        )
+        raise
