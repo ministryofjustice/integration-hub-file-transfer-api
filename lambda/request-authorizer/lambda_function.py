@@ -2,6 +2,7 @@ import base64
 import binascii
 import hmac
 import json
+import logging
 import os
 
 import boto3
@@ -12,6 +13,18 @@ SECRETS_MANAGER = boto3.client("secretsmanager")
 
 AUTH_PRINCIPALS_TABLE = os.environ["AUTH_PRINCIPALS_TABLE"]
 AUTH_ROLES_TABLE = os.environ["AUTH_ROLES_TABLE"]
+LOGGER = logging.getLogger()
+LOGGER.setLevel(logging.INFO)
+
+
+def _log(level, message, **fields):
+    payload = {
+        "level": level,
+        "message": message,
+        "service": "integration-hub-api-authorizer",
+    }
+    payload.update({key: value for key, value in fields.items() if value not in (None, "")})
+    LOGGER.log(getattr(logging, level, logging.INFO), json.dumps(payload, default=str))
 
 
 def _deny():
@@ -95,12 +108,18 @@ def _build_context(principal, role):
 
 def lambda_handler(event, _context):
     authorization = _get_header(event, "authorization")
+    request_id = event.get("requestContext", {}).get("requestId")
+    route_arn = event.get("routeArn")
+    _log("INFO", "Authorization request received", requestId=request_id, routeArn=route_arn)
+
     if not authorization:
+        _log("WARNING", "Authorization denied: missing header", requestId=request_id, routeArn=route_arn)
         return _deny()
 
     try:
         scheme, token = authorization.split(" ", 1)
     except ValueError:
+        _log("WARNING", "Authorization denied: invalid header format", requestId=request_id, routeArn=route_arn)
         return _deny()
     token = token.strip()
 
@@ -112,10 +131,21 @@ def lambda_handler(event, _context):
         principal = None
 
     if principal is None:
+        _log("WARNING", "Authorization denied: invalid credentials", requestId=request_id, routeArn=route_arn)
         return _deny()
 
     role = _get_role(principal["role_name"])
     if role is None:
+        _log("WARNING", "Authorization denied: missing role mapping", requestId=request_id, routeArn=route_arn, roleName=principal["role_name"])
         return _deny()
 
+    _log(
+        "INFO",
+        "Authorization succeeded",
+        requestId=request_id,
+        routeArn=route_arn,
+        principalId=principal["principal_id"],
+        roleName=principal["role_name"],
+        authType=principal["auth_type"],
+    )
     return _build_context(principal, role)
