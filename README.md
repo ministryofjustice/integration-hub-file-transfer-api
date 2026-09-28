@@ -101,35 +101,45 @@ It now protects the API with:
 
 ## Terraform commands
 
-Terraform still runs from `modernisation-platform-environments`. Apply the Managed File Transfer stack first so it creates the SSM parameters for the upload bucket consumed by the API stack.
+The development API is owned by the `integration-hub-api/file-transfer-api`
+component in `modernisation-platform-environments`. It uploads to
+`integration-hub-file-transfer-development-incoming` in the separate MFT account.
+The incoming KMS key is resolved using its full cross-account `alias/s3/incoming`
+ARN; legacy upload-bucket SSM parameters are no longer used.
 
-```bash
-cd terraform/environments/integration-hub/managed-file-transfer
-terraform init -reconfigure
-terraform workspace select integration-hub-development
-terraform plan
-```
+Apply in this order:
 
-Then initialise and plan the API platform stack:
+1. Register `file-transfer-api` in Modernisation Platform and wait for its backend
+   and `integration-hub-api-development` workspace to be provisioned.
+2. Apply `terraform/environments/integration-hub-file-transfer`, workspace
+   `integration-hub-file-transfer-development`, including the incoming S3/KMS grants.
+3. Plan and apply `terraform/environments/integration-hub-api/file-transfer-api`,
+   workspace `integration-hub-api-development`.
+4. Create the GitHub environment `integration-hub-api-file-transfer-api-development`
+   in this repository. Restrict deployment branches to `main`.
+5. Run `deploy-development` to replace all three bootstrap Lambda packages.
+6. Populate the new account's user/bearer/docs secrets from the Terraform outputs
+   using approved secret handling. The `replace-me` values are rejected by the app.
+7. Set Bruno's `api_endpoint` to `transfer_ticket_api_endpoint` from the new
+   component and verify single and multipart uploads, then confirm processing in MFT.
 
-```bash
-cd terraform/environments/integration-hub-api
-terraform init -reconfigure
-terraform workspace select integration-hub-development
-terraform plan
-```
-
-Phase 1 note: the active `integration-hub-api` Terraform folder still uses the legacy `integration-hub/api-platform` backend path and workspace name until the state migration is completed.
+The old endpoint is not reused. Do not apply or destroy the legacy root stack or
+move its state into the new component. The isolated replacement has a new backend
+prefix `environments/members/integration-hub-api/file-transfer-api`.
 
 ## Lambda deployment
 
-Use the `deploy-development` GitHub Actions workflow in this repository to publish the real Lambda code into the development account after the infrastructure has been applied.
-
-That workflow assumes the dedicated IAM role created by `modernisation-platform-environments` output `app_deploy_role_arn`. The role trust is scoped to this repository via GitHub OIDC with a subject like:
+The workflow deploys into account `732169940576` using the dedicated
+`integration-hub-api-platform-app-deploy` role. Its exact OIDC subject matches the
+repository's current default subject configuration:
 
 ```text
-repo:ministryofjustice/integration-hub-file-transfer-api:environment:integration-hub-development*
+repo:ministryofjustice/integration-hub-file-transfer-api:environment:integration-hub-api-file-transfer-api-development
 ```
+
+The role can read/update only the three API Lambda functions. Existing runtime
+function names are retained in the new account. Infrastructure creates bootstrap
+packages; subsequent application releases come from this repository.
 
 ## Authentication configuration
 

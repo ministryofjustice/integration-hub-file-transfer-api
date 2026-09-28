@@ -56,6 +56,8 @@ class FakeS3Client:
     def __init__(self):
         self.create_calls = []
         self.presign_calls = []
+        self.complete_calls = []
+        self.abort_calls = []
 
     def generate_presigned_url(self, ClientMethod, Params, ExpiresIn, HttpMethod):
         self.presign_calls.append(
@@ -73,6 +75,13 @@ class FakeS3Client:
     def create_multipart_upload(self, **kwargs):
         self.create_calls.append(kwargs)
         return {"UploadId": "upload-123"}
+
+    def complete_multipart_upload(self, **kwargs):
+        self.complete_calls.append(kwargs)
+        return {"ETag": '"completed"'}
+
+    def abort_multipart_upload(self, **kwargs):
+        self.abort_calls.append(kwargs)
 
 
 class UploadLambdaTests(unittest.TestCase):
@@ -138,6 +147,11 @@ class UploadLambdaTests(unittest.TestCase):
         self.assertEqual(200, response["statusCode"])
         self.assertEqual("https://example.test/upload", body["upload"]["url"])
         self.assertEqual("1024", body["upload"]["headers"]["x-amz-meta-declared-size-bytes"])
+        params = self.fake_s3.presign_calls[0]["Params"]
+        self.assertEqual(handler.UPLOAD_BUCKET_NAME, params["Bucket"])
+        self.assertEqual(handler.UPLOAD_BUCKET_KMS_KEY_ARN, params["SSEKMSKeyId"])
+        self.assertEqual("aws:kms", params["ServerSideEncryption"])
+        self.assertTrue(params["Key"].startswith("products-poc/uploads/"))
 
     @patch.object(handler, "DYNAMODB")
     @patch.object(handler, "S3_CLIENT")
@@ -165,6 +179,10 @@ class UploadLambdaTests(unittest.TestCase):
         self.assertEqual("upload-123", body["multipart"]["uploadId"])
         self.assertTrue(body["multipart"]["initialParts"])
         self.assertIn("ticket-2", self.multipart_sessions.items)
+        params = self.fake_s3.create_calls[0]
+        self.assertEqual(handler.UPLOAD_BUCKET_NAME, params["Bucket"])
+        self.assertEqual(handler.UPLOAD_BUCKET_KMS_KEY_ARN, params["SSEKMSKeyId"])
+        self.assertTrue(params["Key"].startswith("products-poc/uploads/"))
         self.assertEqual(handler.SINGLE_PUT_LIMIT_BYTES + 1, self.multipart_sessions.items["ticket-2"]["declared_size_bytes"])
 
     @patch.object(handler, "DYNAMODB")
@@ -196,6 +214,55 @@ class UploadLambdaTests(unittest.TestCase):
         body = json.loads(response["body"])
         self.assertEqual(200, response["statusCode"])
         self.assertEqual([1, 3], [part["partNumber"] for part in body["parts"]])
+
+    def _active_session(self):
+        self.multipart_sessions.items["ticket"] = {
+            "transfer_ticket": "ticket", "status": "initiated",
+            "client_id": "products-poc", "bucket": handler.UPLOAD_BUCKET_NAME,
+            "object_key": "products-poc/uploads/file.csv", "upload_id": "upload-1",
+            "expires_in_seconds": 900, "total_parts": 2,
+        }
+
+    def test_complete_uses_session_bucket_and_sorted_parts(self):
+        self._active_session()
+        with patch.object(handler, "DYNAMODB", self.fake_dynamo), patch.object(handler, "S3_CLIENT", self.fake_s3):
+            response = handler.lambda_handler(self._event(
+                "POST /transfer-tickets/{transferTicket}/complete",
+                {"parts": [{"partNumber": 2, "eTag": '"two"'}, {"partNumber": 1, "eTag": '"one"'}]},
+                {"transferTicket": "ticket"}), None)
+        self.assertEqual(200, response["statusCode"])
+        call = self.fake_s3.complete_calls[0]
+        self.assertEqual(handler.UPLOAD_BUCKET_NAME, call["Bucket"])
+        self.assertEqual("products-poc/uploads/file.csv", call["Key"])
+        self.assertEqual("upload-1", call["UploadId"])
+        self.assertEqual([1, 2], [p["PartNumber"] for p in call["MultipartUpload"]["Parts"]])
+        self.assertEqual("completed", json.loads(response["body"])["status"])
+
+    def test_abort_uses_session_bucket_and_upload_id(self):
+        self._active_session()
+        with patch.object(handler, "DYNAMODB", self.fake_dynamo), patch.object(handler, "S3_CLIENT", self.fake_s3):
+            response = handler.lambda_handler(self._event(
+                "DELETE /transfer-tickets/{transferTicket}", None, {"transferTicket": "ticket"}), None)
+        self.assertEqual(200, response["statusCode"])
+        self.assertEqual([{"Bucket": handler.UPLOAD_BUCKET_NAME,
+                          "Key": "products-poc/uploads/file.csv", "UploadId": "upload-1"}], self.fake_s3.abort_calls)
+
+    def test_other_client_cannot_manage_multipart_session(self):
+        self._active_session()
+        for route, body in [
+            ("POST /transfer-tickets/{transferTicket}/parts", {"partNumbers": [1]}),
+            ("POST /transfer-tickets/{transferTicket}/complete", {"parts": [{"partNumber": 1, "eTag": "one"}]}),
+            ("DELETE /transfer-tickets/{transferTicket}", None),
+        ]:
+            with self.subTest(route=route):
+                event = self._event(route, body, {"transferTicket": "ticket"})
+                event["requestContext"]["authorizer"]["lambda"]["allowedClientIds"] = "another-client"
+                with patch.object(handler, "DYNAMODB", self.fake_dynamo), patch.object(handler, "S3_CLIENT", self.fake_s3):
+                    response = handler.lambda_handler(event, None)
+                self.assertEqual(403, response["statusCode"])
+        self.assertEqual([], self.fake_s3.presign_calls)
+        self.assertEqual([], self.fake_s3.complete_calls)
+        self.assertEqual([], self.fake_s3.abort_calls)
 
 
 if __name__ == "__main__":
