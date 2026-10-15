@@ -12,6 +12,13 @@ It now protects the API with:
 2. Bearer token authentication for system-to-system API integrations using Secrets Manager-held tokens.
 3. Role-based authorisation that maps callers to one or more permitted `clientId` values.
 
+## Consumer documentation
+
+Read the [complete API guide](docs/api-guide.md) for flow diagrams, every upload operation, request and response examples, HTTP codes, Bruno setup, and failure recovery.
+
+- [Development Swagger UI](https://5yc80qz674.execute-api.eu-west-2.amazonaws.com/docs) (dedicated documentation credentials required)
+- [OpenAPI source](openapi.yaml)
+
 ## What it does
 
 1. A caller sends `POST /transfer-tickets` to API Gateway with either a Basic auth header or a Bearer token.
@@ -22,7 +29,7 @@ It now protects the API with:
 6. For files at or below the single PUT limit, the Lambda generates a short-lived pre-signed `PUT` URL for the existing Managed File Transfer upload bucket.
 7. For larger files, the Lambda initiates an S3 multipart upload, persists the upload session, and returns the first batch of pre-signed part URLs plus follow-up API operations for the remaining parts, completion, and abort.
 8. The client uploads directly to S3 and, for multipart flows, completes the upload through the API once all parts have been transferred.
-9. When the file reaches the Managed File Transfer `clean` bucket, the downstream notifier publishes a client-facing SNS event containing the `clientId`, `transferTicket`, file details, and a presigned download URL.
+9. After scanning, configured downstream pickup processing copies clean files to private pickup storage and sends a Slack notification containing the pickup path and Transfer web app link. Recipients sign in and need an authorised read grant to collect files; the notification does not contain a presigned download URL.
 
 ## Sample request payload
 
