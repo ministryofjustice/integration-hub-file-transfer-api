@@ -89,27 +89,53 @@ def _build_object_key(prefix, file_name):
 
 
 def _authorizer_context(event):
-    authorizer = event.get("requestContext", {}).get("authorizer", {})
-    if isinstance(authorizer.get("lambda"), dict):
-        return authorizer["lambda"]
-    return authorizer
+    # Trust only API Gateway's validated JWT context, never caller headers or legacy context.
+    claims = event.get("requestContext", {}).get("authorizer", {}).get("jwt", {}).get("claims", {})
+    if not isinstance(claims, dict):
+        return {}
+    tenant = os.environ.get("ENTRA_TENANT_ID", "")
+    audience = os.environ.get("ENTRA_API_AUDIENCE", "")
+    if not tenant or not audience:
+        return {}
+    if (claims.get("iss") != f"https://login.microsoftonline.com/{tenant}/v2.0"
+            or claims.get("tid") != tenant or claims.get("aud") != audience
+            or claims.get("ver") != "2.0" or claims.get("idtyp") != "app"
+            or "scp" in claims):
+        return {}
+    roles = claims.get("roles", [])
+    if isinstance(roles, str):
+        # HTTP API claim values can be strings, including flattened array claims.
+        try:
+            roles = json.loads(roles)
+        except ValueError:
+            roles = roles.strip("[]").split(",")
+            roles = [role.strip() for role in roles]
+    if not isinstance(roles, list) or "FileTransfer.Upload" not in roles:
+        return {}
+    application_id = claims.get("azp")
+    if not isinstance(application_id, str) or not application_id:
+        return {}
+    try:
+        applications = json.loads(os.environ.get("ENTRA_APPLICATION_CLIENTS", "{}"))
+        clients = applications.get(application_id, [])
+    except (ValueError, AttributeError):
+        return {}
+    if (not isinstance(clients, list) or not clients
+            or any(not isinstance(c, str) or not c or c == "*" or "," in c for c in clients)):
+        return {}
+    return {"principalId": application_id, "roleName": "FileTransfer.Upload",
+            "authType": "oauth2", "allowedClientIds": ",".join(clients)}
 
 
 def _principal_context(event):
     context = _authorizer_context(event)
-    return {
-        "principal_id": context.get("principalId", ""),
-        "role_name": context.get("roleName", ""),
-        "auth_type": context.get("authType", ""),
-    }
+    return {"principal_id": context.get("principalId", ""),
+            "role_name": context.get("roleName", ""),
+            "auth_type": context.get("authType", "")}
 
 
 def _allowed_client_ids(event):
-    context = _authorizer_context(event)
-    raw_value = context.get("allowedClientIds", "")
-    if not raw_value:
-        return set()
-    return {value for value in raw_value.split(",") if value}
+    return set(_authorizer_context(event).get("allowedClientIds", "").split(",")) - {""}
 
 
 def _get_transfer_client(client_id):
@@ -745,6 +771,8 @@ def _handle_abort_multipart(event):
 
 
 def lambda_handler(event, _context):
+    if not _authorizer_context(event):
+        return _response(403, {"message": "Application is not authorised for file transfer"})
     route_key = event.get("routeKey")
     request_id = event.get("requestContext", {}).get("requestId")
     principal = _principal_context(event)

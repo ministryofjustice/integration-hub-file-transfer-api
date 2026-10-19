@@ -23,6 +23,10 @@ sys.modules["boto3"] = SimpleNamespace(
 sys.modules["botocore"] = SimpleNamespace()
 sys.modules["botocore.config"] = SimpleNamespace(Config=lambda **_kwargs: SimpleNamespace())
 
+os.environ["ENTRA_TENANT_ID"] = "tenant-test"
+os.environ["ENTRA_API_AUDIENCE"] = "api-test"
+os.environ["ENTRA_APPLICATION_CLIENTS"] = json.dumps({"consumer-test": ["products-poc"], "other-consumer": ["other-client"]})
+
 import lambda_function as handler
 
 
@@ -113,15 +117,62 @@ class UploadLambdaTests(unittest.TestCase):
             "pathParameters": path_parameters or {},
             "requestContext": {
                 "authorizer": {
-                    "lambda": {
-                        "allowedClientIds": "products-poc",
-                        "principalId": "test-user",
-                        "roleName": "products-poc-upload",
-                        "authType": "basic",
-                    }
+                    "jwt": {"claims": {
+                        "iss": "https://login.microsoftonline.com/tenant-test/v2.0",
+                        "tid": "tenant-test", "aud": "api-test", "ver": "2.0",
+                        "idtyp": "app", "azp": "consumer-test",
+                        "roles": "[FileTransfer.Upload]",
+                    }}
                 }
             },
         }
+
+    def test_invalid_identity_rejected_before_any_side_effect(self):
+        cases = [
+            {"tid": "wrong"}, {"aud": "wrong"}, {"iss": "https://attacker.test"},
+            {"ver": "1.0"}, {"idtyp": "user"}, {"idtyp": None},
+            {"scp": "FileTransfer.Upload"}, {"azp": "unmapped"}, {"azp": None},
+            {"roles": []}, {"roles": "Other.FileTransfer.Upload"},
+            {"roles": "FileTransfer.Upload.Extra"}, {"roles": None},
+        ]
+        for route in ("POST /transfer-tickets", "POST /transfer-tickets/{transferTicket}/parts",
+                      "POST /transfer-tickets/{transferTicket}/complete", "DELETE /transfer-tickets/{transferTicket}"):
+            for updates in cases:
+                with self.subTest(route=route, updates=updates), patch.object(handler, "DYNAMODB") as db, patch.object(handler, "S3_CLIENT") as s3:
+                    event = self._event(route, {})
+                    event["requestContext"]["authorizer"]["jwt"]["claims"].update(updates)
+                    self.assertEqual(403, handler.lambda_handler(event, None)["statusCode"])
+                    db.Table.assert_not_called()
+                    self.assertFalse(s3.mock_calls)
+
+    def test_legacy_context_and_headers_cannot_grant_access(self):
+        event = self._event("POST /transfer-tickets", {})
+        event["requestContext"]["authorizer"] = {"lambda": {"allowedClientIds": "products-poc"}}
+        event["headers"] = {"authorization": "Bearer products-poc.token"}
+        self.assertEqual(403, handler.lambda_handler(event, None)["statusCode"])
+
+    def test_missing_tenant_or_audience_fails_closed(self):
+        for field in ("ENTRA_TENANT_ID", "ENTRA_API_AUDIENCE"):
+            with patch.dict(os.environ, {field: ""}):
+                self.assertEqual(403, handler.lambda_handler(self._event("POST /transfer-tickets", {}), None)["statusCode"])
+
+    def test_other_client_cannot_create_ticket(self):
+        event = self._event("POST /transfer-tickets", {"clientId": "other-client", "fileName": "test.txt", "sizeBytes": 5})
+        with patch.object(handler, "DYNAMODB") as db, patch.object(handler, "S3_CLIENT") as s3:
+            self.assertEqual(403, handler.lambda_handler(event, None)["statusCode"])
+            db.Table.assert_not_called()
+            self.assertFalse(s3.mock_calls)
+
+    def test_role_claim_serializations(self):
+        for roles in (["FileTransfer.Upload"], '["FileTransfer.Upload"]', "[FileTransfer.Upload]", "FileTransfer.Upload"):
+            event = self._event("POST /transfer-tickets", {})
+            event["requestContext"]["authorizer"]["jwt"]["claims"]["roles"] = roles
+            self.assertEqual({"products-poc"}, handler._allowed_client_ids(event))
+
+    def test_missing_or_invalid_mapping_fails_closed(self):
+        for mapping in ('{}', 'null', 'invalid', '{"consumer-test": ["*"]}', '{"consumer-test": "products-poc"}'):
+            with patch.dict(os.environ, {"ENTRA_APPLICATION_CLIENTS": mapping}):
+                self.assertEqual(403, handler.lambda_handler(self._event("POST /transfer-tickets", {}), None)["statusCode"])
 
     @patch.object(handler, "DYNAMODB")
     @patch.object(handler, "S3_CLIENT")
@@ -256,7 +307,7 @@ class UploadLambdaTests(unittest.TestCase):
         ]:
             with self.subTest(route=route):
                 event = self._event(route, body, {"transferTicket": "ticket"})
-                event["requestContext"]["authorizer"]["lambda"]["allowedClientIds"] = "another-client"
+                event["requestContext"]["authorizer"]["jwt"]["claims"]["azp"] = "other-consumer"
                 with patch.object(handler, "DYNAMODB", self.fake_dynamo), patch.object(handler, "S3_CLIENT", self.fake_s3):
                     response = handler.lambda_handler(event, None)
                 self.assertEqual(403, response["statusCode"])

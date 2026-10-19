@@ -53,21 +53,20 @@ A ticket response is **not** upload confirmation. An S3 upload response is **not
 
 ## Authentication and permissions
 
-All four upload API operations accept either:
+All four upload API operations require:
 
 ```http
-Authorization: Basic <base64(username:password)>
+Authorization: Bearer <Entra-access-token>
 ```
 
-or:
+Use [OAuth2 client credentials](oauth2.md) to obtain a v2 application access token.
+API Gateway verifies its signature, issuer, audience and time claims. The handler
+requires `idtyp=app`, no delegated `scp` claim, `FileTransfer.Upload` in `roles`,
+and a configured `azp` consumer application grant for the requested client ID.
+Basic and legacy opaque bearer tokens no longer grant upload access.
 
-```http
-Authorization: Bearer <tokenId>.<bearerToken>
-```
-
-The bearer credential is an opaque Secrets Manager-managed token pair; this API does not issue OAuth2 access tokens. The authorizer looks up the principal and role, and the handler checks the role's allowed `clientId` values. A valid login does not grant access to every client.
-
-Multipart follow-up access is checked against the session's client ID. It is not restricted to the original principal if another authorised principal can access that same client.
+Multipart follow-up calls check the session's client ID against the same application
+grant. Another authorised application for that client can continue its session.
 
 For S3 PUT requests, select **No Auth** in your HTTP client. The returned URL carries the signature. Do not send API Basic/Bearer credentials to S3, modify its query string, or double-encode it. Treat signed URLs as temporary credentials and avoid including them in tickets, screenshots or logs shared with others.
 
@@ -148,11 +147,11 @@ sequenceDiagram
 
 ### Working command-line example
 
-Requires `curl` and Python 3. The first command creates a six-byte file. Curl prompts for your password; do not put it in the script.
+Requires `curl` and Python 3. The first command creates a six-byte file. Set `ENTRA_ACCESS_TOKEN` securely using the OAuth2 guide; do not commit tokens.
 
 ```bash
 printf 'Hello\n' > /tmp/sample.txt
-curl --fail-with-body --user 'products-poc-user' \
+curl --fail-with-body --header "Authorization: Bearer ${ENTRA_ACCESS_TOKEN}" \
   --header 'Content-Type: application/json' \
   --data '{"clientId":"products-poc","fileName":"sample.txt","contentType":"text/plain","sizeBytes":6,"requestedExpirySeconds":900}' \
   'https://5yc80qz674.execute-api.eu-west-2.amazonaws.com/transfer-tickets' \
@@ -353,8 +352,8 @@ Abort applies to an active multipart session. It is not a delete-file endpoint f
 | --- | --- | --- |
 | `200` | Ticket/part URLs created, multipart completed, or multipart aborted. | Inspect the body; ticket creation alone has not transferred any bytes. |
 | `400` | Handler rejected the request: invalid JSON/object shape, missing fields, disallowed content type, excessive declared size, invalid part selection/completion payload, or multipart `contentMd5`. | Correct the request; do not retry unchanged. |
-| `401` | API Gateway may reject a missing required authentication identity. | Supply API authentication. |
-| `403` | Authorizer denies credentials, or handler denies client access/disabled client. | Check credentials, enabled principal/client and role mapping. |
+| `401` | API Gateway rejects missing or invalid JWT credentials (including expired tokens). | Supply API authentication. |
+| `403` | Handler denies application identity/role/client access, or the client is disabled. | Check credentials, enabled principal/client and role mapping. |
 | `404` | Unknown authorised client, missing multipart ticket, or unsupported route. | Verify endpoint and IDs; a single-upload ticket is not a multipart session. |
 | `409` | Multipart session expired or is no longer `initiated`. | Do not continue that session; investigate completion or start a new transfer as appropriate. |
 | `429` | Gateway throttling. | Back off with jitter and bounded retries; ask the service owner if sustained. |
@@ -475,7 +474,7 @@ Operators should check API Gateway/Lambda logs, multipart session state, S3 obje
 Source references for maintaining this guide:
 
 - [Upload handler](../lambda/request-upload-ticket/lambda_function.py): validation, signing, multipart sessions and response bodies.
-- [Authorizer](../lambda/request-authorizer/lambda_function.py): Basic/Bearer credentials and role context.
+- [Retired authorizer](../lambda/request-authorizer/lambda_function.py): deny-only handler retained during cutover; no upload route uses it.
 - [Docs handler](../lambda/request-docs/lambda_function.py): protected Swagger/OpenAPI routes.
 - [OpenAPI contract](../openapi.yaml): machine-readable request and response schemas.
 - [Infrastructure component](https://github.com/ministryofjustice/modernisation-platform-environments/tree/main/terraform/environments/integration-hub-api/file-transfer-api): API configuration and deployment outputs.
