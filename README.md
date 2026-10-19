@@ -137,7 +137,7 @@ prefix `environments/members/integration-hub-api/file-transfer-api`.
 ## Lambda deployment
 
 The workflow deploys into account `732169940576` using the dedicated
-`integration-hub-api-platform-app-deploy` role. Its exact OIDC subject matches the
+`integration-hub-api-file-transfer-api-app-deploy` role. Its exact OIDC subject matches the
 repository's current default subject configuration:
 
 ```text
@@ -224,14 +224,14 @@ Example bootstrap flow for a user secret:
 
 ```bash
 terraform output user_auth_secret_names
-scripts/bootstrap-api-credentials.sh user --secret-id integration-hub-api-platform-development-user-products-poc-user
+scripts/bootstrap-api-credentials.sh user --secret-id integration-hub-api-file-transfer-api-development-user-products-poc-user
 ```
 
 Example bootstrap flow for a system principal:
 
 ```bash
 terraform output system_auth_secret_names
-scripts/bootstrap-api-credentials.sh system --secret-id integration-hub-api-platform-development-system-products-poc-api
+scripts/bootstrap-api-credentials.sh system --secret-id integration-hub-api-file-transfer-api-development-system-products-poc-api
 ```
 
 ## Upload selection
