@@ -14,7 +14,7 @@ spec.loader.exec_module(smoke)
 
 
 class SmokeTests(unittest.TestCase):
-    def run_smoke(self, upload_url, basic_status=401):
+    def run_smoke(self, upload_url, basic_status=401, upload_only=False):
         ticket = {'transferTicket': '00000000-0000-0000-0000-000000000004',
                   'upload': {'method': 'PUT', 'url': upload_url,
                              'headers': {'Content-Type': 'text/plain'}}}
@@ -22,7 +22,9 @@ class SmokeTests(unittest.TestCase):
                      (200, b'{"access_token":"private-token"}'),
                      (401, b''), (basic_status, b''), (401, b''), (400, b''),
                      (201, json.dumps(ticket).encode()), (200, b'')]
-        environment = {'ENTRA_TENANT_ID': '00000000-0000-0000-0000-000000000001',
+        if upload_only:
+            responses = responses[:2] + responses[-2:]
+        environment = {'UPLOAD_ONLY': 'true' if upload_only else 'false','ENTRA_TENANT_ID': '00000000-0000-0000-0000-000000000001',
                        'ENTRA_CONSUMER_CLIENT_ID': '00000000-0000-0000-0000-000000000002',
                        'ENTRA_API_CLIENT_ID': '00000000-0000-0000-0000-000000000003',
                        'ACTIONS_ID_TOKEN_REQUEST_URL': 'https://example.test/token?x=1',
@@ -42,6 +44,14 @@ class SmokeTests(unittest.TestCase):
         self.assertNotIn('Authorization', calls[-1].args[3])
         for secret in ('private-assertion', 'private-token', 'private-signature', 'github-secret'):
             self.assertNotIn(secret, output)
+
+    def test_upload_only_uses_jwt_and_performs_real_put(self):
+        calls, output = self.run_smoke('https://integration-hub-file-transfer-development-incoming.s3.eu-west-2.amazonaws.com/test', upload_only=True)
+        self.assertEqual(len(calls), 4)
+        self.assertEqual(calls[2].args[3]['Authorization'], 'Bearer private-token')
+        self.assertEqual(calls[3].args[1], 'PUT')
+        self.assertNotIn('Basic authentication', output)
+        self.assertNotIn('private-token', output)
 
     def test_basic_403_continues_to_upload(self):
         calls, _ = self.run_smoke('https://integration-hub-file-transfer-development-incoming.s3.eu-west-2.amazonaws.com/test', basic_status=403)
