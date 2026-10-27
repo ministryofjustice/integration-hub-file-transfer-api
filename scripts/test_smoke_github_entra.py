@@ -14,13 +14,13 @@ spec.loader.exec_module(smoke)
 
 
 class SmokeTests(unittest.TestCase):
-    def run_smoke(self, upload_url):
+    def run_smoke(self, upload_url, basic_status=401):
         ticket = {'transferTicket': '00000000-0000-0000-0000-000000000004',
                   'upload': {'method': 'PUT', 'url': upload_url,
                              'headers': {'Content-Type': 'text/plain'}}}
         responses = [(200, b'{"value":"private-assertion"}'),
                      (200, b'{"access_token":"private-token"}'),
-                     (401, b''), (401, b''), (401, b''), (400, b''),
+                     (401, b''), (basic_status, b''), (401, b''), (400, b''),
                      (201, json.dumps(ticket).encode()), (200, b'')]
         environment = {'ENTRA_TENANT_ID': '00000000-0000-0000-0000-000000000001',
                        'ENTRA_CONSUMER_CLIENT_ID': '00000000-0000-0000-0000-000000000002',
@@ -42,6 +42,14 @@ class SmokeTests(unittest.TestCase):
         self.assertNotIn('Authorization', calls[-1].args[3])
         for secret in ('private-assertion', 'private-token', 'private-signature', 'github-secret'):
             self.assertNotIn(secret, output)
+
+    def test_basic_403_continues_to_upload(self):
+        calls, _ = self.run_smoke('https://integration-hub-file-transfer-development-incoming.s3.eu-west-2.amazonaws.com/test', basic_status=403)
+        self.assertEqual(len(calls), 8)
+
+    def test_basic_success_is_failure(self):
+        with self.assertRaises(RuntimeError):
+            self.run_smoke('https://integration-hub-file-transfer-development-incoming.s3.eu-west-2.amazonaws.com/test', basic_status=200)
 
     def test_reject_unexpected_upload_destination(self):
         with self.assertRaisesRegex(RuntimeError, 'Unexpected upload destination'):

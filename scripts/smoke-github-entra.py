@@ -88,7 +88,11 @@ def main():
         if authorization:
             check_headers['Authorization'] = authorization
         status, _ = request(endpoint + '/transfer-tickets', 'POST', b'{}', check_headers)
-        require(status, 401, label)
+        if label == 'Basic authentication':
+            # Gateway may return 401 or 403 for a non-Bearer credential.
+            require(status in (401, 403), True, f'{label} rejected (HTTP {status})')
+        else:
+            require(status, 401, label)
     headers['Authorization'] = 'Bearer ' + token
     status, _ = request(endpoint + '/transfer-tickets', 'POST', b'{}', headers)
     require(status, 400, 'Authorised request validation')
