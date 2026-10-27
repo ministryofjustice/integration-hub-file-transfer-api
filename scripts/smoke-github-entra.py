@@ -25,7 +25,31 @@ def request(url, method='GET', data=None, headers=None):
             return response.status, response.read()
     except urllib.error.HTTPError as error:
         # Do not include error bodies or request URLs in logs.
-        return error.code, b''
+        return error.code, error.read(16384)
+
+
+def report_entra_error(body):
+    """Only emit validated diagnostic codes; descriptions can contain assertions."""
+    try:
+        error = json.loads(body)
+    except (ValueError, UnicodeError):
+        return
+    if not isinstance(error, dict):
+        return
+    safe = {}
+    allowed = {'invalid_request', 'invalid_client', 'invalid_grant', 'invalid_scope',
+               'unauthorized_client', 'access_denied', 'temporarily_unavailable', 'server_error'}
+    if isinstance(error.get('error'), str) and error['error'] in allowed:
+        safe['error'] = error['error']
+    codes = error.get('error_codes', [])
+    if isinstance(codes, list):
+        safe['error_codes'] = [code for code in codes if type(code) is int and 0 <= code < 1000000000][:10]
+    for field in ('correlation_id', 'trace_id'):
+        try:
+            safe[field] = str(uuid.UUID(error[field]))
+        except (KeyError, ValueError, TypeError, AttributeError):
+            pass
+    print('Entra diagnostic: ' + json.dumps(safe))
 
 
 def require(status, expected, label):
@@ -53,6 +77,8 @@ def main():
     }).encode()
     status, body = request(f'https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token', 'POST', data,
                            {'Content-Type': 'application/x-www-form-urlencoded'})
+    if status != 200:
+        report_entra_error(body)
     require(status, 200, 'Entra token exchange')
     token = json.loads(body)['access_token']
     headers = {'Content-Type': 'application/json'}

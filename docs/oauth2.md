@@ -123,8 +123,8 @@ and strict-validation limitations in the consumer guide remain separate work.
 
 The manual **Test Entra development authentication** workflow runs only from `main`
 in the `file-transfer-api-entra-development` GitHub environment. That environment
-must allow only `main`, require an Integration Hub team reviewer and disable
-self-approval and administrator bypass. It is deliberately unavailable to PR branches.
+allows only `main`, with administrator bypass disabled. Development smoke tests
+do not require a separate environment reviewer approval. It is deliberately unavailable to PR branches.
 
 The development consumer trusts issuer `https://token.actions.githubusercontent.com`,
 audience `api://AzureADTokenExchange`, and subject
