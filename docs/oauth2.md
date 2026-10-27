@@ -143,3 +143,12 @@ missing/Basic/invalid tokens, checks authenticated request validation, then crea
 normal scan and Slack notification flow. It does not check scan completion, download,
 multipart transfer or all negative-token fixtures; retain the full acceptance suite
 above. Tokens, assertions and presigned URLs are not logged or saved as artifacts.
+
+
+The development API uses the tenant-qualified Application ID URI
+`api://0bb413d7-160d-4839-868a-f3d46537f6af/integration-hub-file-transfer-api`.
+The GitHub smoke test derives this from `ENTRA_TENANT_ID` and requests that URI
+with `/.default`. This must be deployed through IDAM PR #968 before the updated
+test runs. The API Gateway JWT audience and `ENTRA_API_CLIENT_ID` remain the API
+application client ID; do not change them to the URI. Manual clients should use
+the IDAM `token_scope` output rather than constructing it from the API client ID.

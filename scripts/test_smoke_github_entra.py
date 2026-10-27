@@ -4,6 +4,7 @@ import io
 import json
 import os
 from pathlib import Path
+import urllib.parse
 import unittest
 from unittest.mock import patch
 
@@ -33,7 +34,10 @@ class SmokeTests(unittest.TestCase):
 
     def test_exchange_upload_and_no_credential_output(self):
         calls, output = self.run_smoke('https://integration-hub-file-transfer-development-incoming.s3.eu-west-2.amazonaws.com/test?signature=private-signature')
-        self.assertIn('client_assertion=private-assertion', calls[1].args[2].decode())
+        form = urllib.parse.parse_qs(calls[1].args[2].decode())
+        self.assertEqual(form['scope'], ['api://00000000-0000-0000-0000-000000000001/integration-hub-file-transfer-api/.default'])
+        self.assertEqual(form['client_id'], ['00000000-0000-0000-0000-000000000002'])
+        self.assertEqual(form['client_assertion'], ['private-assertion'])
         self.assertEqual(calls[-1].args[3], {'Content-Type': 'text/plain'})
         self.assertNotIn('Authorization', calls[-1].args[3])
         for secret in ('private-assertion', 'private-token', 'private-signature', 'github-secret'):

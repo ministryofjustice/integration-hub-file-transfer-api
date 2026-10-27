@@ -61,7 +61,8 @@ def require(status, expected, label):
 def main():
     tenant = str(uuid.UUID(os.environ['ENTRA_TENANT_ID']))
     consumer = str(uuid.UUID(os.environ['ENTRA_CONSUMER_CLIENT_ID']))
-    audience = str(uuid.UUID(os.environ['ENTRA_API_CLIENT_ID']))
+    # Validate the configured audience ID; the requested resource URI uses the tenant.
+    uuid.UUID(os.environ['ENTRA_API_CLIENT_ID'])
     # Fixed development endpoint avoids sending an access token to an arbitrary input.
     endpoint = 'https://5yc80qz674.execute-api.eu-west-2.amazonaws.com'
     oidc_url = os.environ['ACTIONS_ID_TOKEN_REQUEST_URL']
@@ -71,7 +72,7 @@ def main():
     assertion = json.loads(body)['value']
     data = urllib.parse.urlencode({
         'client_id': consumer, 'grant_type': 'client_credentials',
-        'scope': f'api://{audience}/.default',
+        'scope': f'api://{tenant}/integration-hub-file-transfer-api/.default',
         'client_assertion_type': 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
         'client_assertion': assertion,
     }).encode()
