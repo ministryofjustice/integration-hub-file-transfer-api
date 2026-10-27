@@ -255,12 +255,12 @@ def _swagger_html(spec_url):
           <p>
             Interactive Swagger UI for the single-upload and multipart upload contract.
             Access to this page is protected by dedicated HTTP Basic auth, while API
-            operations inside the UI continue to use the API's own Basic and Bearer schemes.
+            operations inside the UI continue to use the API's Entra OAuth2 Bearer scheme.
           </p>
           <div class="hero-meta">
             <div class="meta-card">
               <strong>Authentication</strong>
-              <span>Use the Authorize button for Basic credentials or a Bearer token before trying requests.</span>
+              <span>Use the Authorize button with an Entra application access token before trying requests.</span>
             </div>
             <div class="meta-card">
               <strong>Sharing Pattern</strong>

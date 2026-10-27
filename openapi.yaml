@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Integration Hub Managed File Transfer API
-  version: 2.0.0
+  version: 3.0.0
   description: |
     Thin API layer for Managed File Transfer uploads.
 
@@ -12,7 +12,6 @@ servers:
   - url: /
     description: Same origin as the deployed Swagger UI or API hostname.
 security:
-  - basicAuth: []
   - bearerAuth: []
 tags:
   - name: Transfer Tickets
@@ -33,7 +32,6 @@ paths:
         The client supplies `sizeBytes` and the API decides which upload path to use.
       operationId: createTransferTicket
       security:
-        - basicAuth: []
         - bearerAuth: []
       requestBody:
         required: true
@@ -65,7 +63,6 @@ paths:
       summary: Generate pre-signed multipart part URLs
       operationId: presignMultipartParts
       security:
-        - basicAuth: []
         - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/TransferTicket'
@@ -99,7 +96,6 @@ paths:
       summary: Complete a multipart upload
       operationId: completeMultipartUpload
       security:
-        - basicAuth: []
         - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/TransferTicket'
@@ -133,7 +129,6 @@ paths:
       summary: Abort a multipart upload
       operationId: abortMultipartUpload
       security:
-        - basicAuth: []
         - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/TransferTicket'
@@ -169,15 +164,14 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
   securitySchemes:
-    basicAuth:
-      type: http
-      scheme: basic
-      description: Basic auth using a Secrets Manager-managed username/password.
     bearerAuth:
       type: http
       scheme: bearer
-      bearerFormat: opaque token in the form tokenId.bearerToken
-      description: Bearer token using a Secrets Manager-managed token pair.
+      bearerFormat: JWT
+      description: >-
+        Entra ID v2 application access token obtained using client credentials.
+        Requires the FileTransfer.Upload application role and a configured consumer
+        application-to-clientId grant. Basic and static bearer credentials are rejected.
   schemas:
     TransferTicketRequest:
       type: object

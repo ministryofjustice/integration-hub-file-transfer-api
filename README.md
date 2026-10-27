@@ -6,11 +6,14 @@ The AWS infrastructure for this API stays in `ministryofjustice/modernisation-pl
 
 This repository owns deployment of the live Lambda application code. The environments repository now creates only bootstrap Lambda handlers so Terraform can stay infrastructure-only.
 
-It now protects the API with:
+Upload operations require **Entra ID OAuth2 client-credentials access tokens**.
+API Gateway validates JWT signatures, issuer, audience and time claims. The upload handler
+requires an application-only token, the `FileTransfer.Upload` role and an explicit
+application-to-client mapping. Basic and legacy static bearer credentials are rejected.
 
-1. Basic authentication for user-driven HTTPS uploads using Secrets Manager-held credentials.
-2. Bearer token authentication for system-to-system API integrations using Secrets Manager-held tokens.
-3. Role-based authorisation that maps callers to one or more permitted `clientId` values.
+**Deployment is gated:** approved Entra registration details and live acceptance tests
+are still required. See the [OAuth2 setup and rollout guide](docs/oauth2.md).
+Documentation-page Basic authentication is separate and remains in place.
 
 ## Consumer documentation
 
@@ -21,9 +24,9 @@ Read the [complete API guide](docs/api-guide.md) for flow diagrams, every upload
 
 ## What it does
 
-1. A caller sends `POST /transfer-tickets` to API Gateway with either a Basic auth header or a Bearer token.
-2. API Gateway invokes a Lambda request authorizer.
-3. The authorizer validates the caller against Secrets Manager credentials or bearer tokens and resolves the caller's role mapping from DynamoDB.
+1. A caller sends `POST /transfer-tickets` to API Gateway with an Entra application access token.
+2. API Gateway validates the token using its JWT authorizer.
+3. The upload handler checks the validated tenant, audience, application identity and role against its configured client grants.
 4. The upload-ticket Lambda reads client upload configuration from DynamoDB.
 5. The upload-ticket Lambda verifies that the authenticated caller is allowed to request a ticket for the requested `clientId`.
 6. For files at or below the single PUT limit, the Lambda generates a short-lived pre-signed `PUT` URL for the existing Managed File Transfer upload bucket.
@@ -125,8 +128,8 @@ Apply in this order:
 4. Create the GitHub environment `integration-hub-api-file-transfer-api-development`
    in this repository. Restrict deployment branches to `main`.
 5. Run `deploy-development` to replace all three bootstrap Lambda packages.
-6. Populate the new account's user/bearer/docs secrets from the Terraform outputs
-   using approved secret handling. The `replace-me` values are rejected by the app.
+6. Configure Entra identities and client grants using the OAuth2 rollout guide.
+   Populate only the separate documentation credential secret through approved handling.
 7. Set Bruno's `api_endpoint` to `transfer_ticket_api_endpoint` from the new
    component and verify single and multipart uploads, then confirm processing in MFT.
 
@@ -144,95 +147,13 @@ repository's current default subject configuration:
 repo:ministryofjustice/integration-hub-file-transfer-api:environment:integration-hub-api-file-transfer-api-development
 ```
 
-The role can read/update only the three API Lambda functions. Existing runtime
+The role can read/update only the three API Lambda functions (including the retired, deny-only authorizer during cutover). Existing runtime
 function names are retained in the new account. Infrastructure creates bootstrap
 packages; subsequent application releases come from this repository.
 
 ## Authentication configuration
 
-`application_variables.json` now supports an `auth_configuration` block per environment:
-
-```json
-{
-  "auth_configuration": {
-    "roles": {
-      "products-poc-upload": {
-        "allowed_client_ids": ["products-poc"]
-      }
-    },
-    "users": {
-      "products-poc-user": {
-        "enabled": true,
-        "role_name": "products-poc-upload"
-      }
-    },
-    "system_principals": {
-      "products-poc-api": {
-        "enabled": true,
-        "role_name": "products-poc-upload"
-      }
-    }
-  }
-}
-```
-
-After apply, retrieve the created secret names from the Terraform outputs:
-
-```bash
-terraform output user_auth_secret_names
-terraform output system_auth_secret_names
-```
-
-Terraform creates the secret containers, but the live secret values are managed operationally in AWS Secrets Manager and ignored by Terraform after creation. The authorizer resolves the current secret value from Secrets Manager at request time using the stored secret name.
-
-For repeatable credential bootstrapping outside Terraform state, use:
-
-```bash
-scripts/bootstrap-api-credentials.sh user --secret-id <user-secret-name>
-scripts/bootstrap-api-credentials.sh system --secret-id <system-secret-name>
-```
-
-The script generates the live credential locally, writes it to Secrets Manager, and prints only the one-time handover value to stdout.
-
-Populate a user secret with JSON in this shape:
-
-```json
-{
-  "username": "products-poc-user",
-  "password": "replace-with-password",
-  "roleName": "products-poc-upload"
-}
-```
-
-Populate a system principal secret with JSON in this shape:
-
-```json
-{
-  "tokenId": "products-poc-api",
-  "bearerToken": "replace-with-token",
-  "roleName": "products-poc-upload"
-}
-```
-
-The bearer token supplied to the API is:
-
-```text
-<tokenId>.<bearerToken>
-```
-
-Example bootstrap flow for a user secret:
-
-```bash
-terraform output user_auth_secret_names
-scripts/bootstrap-api-credentials.sh user --secret-id integration-hub-api-file-transfer-api-development-user-products-poc-user
-```
-
-Example bootstrap flow for a system principal:
-
-```bash
-terraform output system_auth_secret_names
-scripts/bootstrap-api-credentials.sh system --secret-id integration-hub-api-file-transfer-api-development-system-products-poc-api
-```
+See [Entra setup, token acquisition, testing and deployment](docs/oauth2.md).
 
 ## Upload selection
 
@@ -244,39 +165,12 @@ The client always provides `sizeBytes`. The API uses that declared size to:
 
 The declared size is stored as multipart session state and written into the uploaded object's S3 metadata for traceability.
 
-## Example API call with Basic auth
+## Example API call
 
-Replace `<api-endpoint>` with the `transfer_ticket_api_endpoint` Terraform output after apply.
-
-```bash
-curl -X POST "https://<api-endpoint>/transfer-tickets" \
-  -u "<username>:<password>" \
-  -H "content-type: application/json" \
-  -d '{
-    "clientId": "products-poc",
-    "fileName": "example-upload.csv",
-    "contentType": "text/csv",
-    "sizeBytes": 12345,
-    "requestedExpirySeconds": 900,
-    "contentMd5": "CY9rzUYh03PK3k6DJie09g=="
-  }'
-```
-
-## Example API call with Bearer auth
-
-```bash
-curl -X POST "https://<api-endpoint>/transfer-tickets" \
-  -H "authorization: Bearer <tokenId>.<token>" \
-  -H "content-type: application/json" \
-  -d '{
-    "clientId": "products-poc",
-    "fileName": "example-upload.csv",
-    "contentType": "text/csv",
-    "sizeBytes": 12345,
-    "requestedExpirySeconds": 900,
-    "contentMd5": "CY9rzUYh03PK3k6DJie09g=="
-  }'
-```
+Obtain an Entra access token as described in [OAuth2 setup](docs/oauth2.md), then send it
+as `Authorization: Bearer <access_token>` to `POST /transfer-tickets`. Use the same
+API authentication for multipart part URLs, completion and abort. S3 PUTs use only
+the returned signed URL and headers.
 
 ## Multipart follow-up calls
 
@@ -284,7 +178,7 @@ Request more part URLs:
 
 ```bash
 curl -X POST "https://<api-endpoint>/transfer-tickets/<transfer-ticket>/parts" \
-  -H "authorization: Bearer <tokenId>.<token>" \
+  -H "authorization: Bearer <access_token>" \
   -H "content-type: application/json" \
   -d '{
     "partNumberStart": 11,
@@ -296,7 +190,7 @@ Complete the multipart upload after collecting the `ETag` response header from e
 
 ```bash
 curl -X POST "https://<api-endpoint>/transfer-tickets/<transfer-ticket>/complete" \
-  -H "authorization: Bearer <tokenId>.<token>" \
+  -H "authorization: Bearer <access_token>" \
   -H "content-type: application/json" \
   -d '{
     "parts": [
@@ -310,7 +204,7 @@ Abort a multipart upload if the transfer is abandoned:
 
 ```bash
 curl -X DELETE "https://<api-endpoint>/transfer-tickets/<transfer-ticket>" \
-  -H "authorization: Bearer <tokenId>.<token>"
+  -H "authorization: Bearer <access_token>"
 ```
 
 ## OpenAPI
@@ -342,8 +236,7 @@ scripts/bootstrap-api-credentials.sh docs --secret-id <docs-secret-name>
 
 Inside Swagger UI, callers should still use the API's own security schemes for actual operations:
 
-- Basic auth credentials backed by Secrets Manager, or
-- a Bearer token in the form `<tokenId>.<bearerToken>`
+- an Entra application access token
 
 ## Recommended sharing pattern
 
@@ -354,4 +247,4 @@ The standard pattern for sharing a Swagger contract with internal and external c
 3. Publish the raw OpenAPI document as a separate protected URL for code generation, Postman imports, and client automation.
 4. Treat the OpenAPI file as versioned source alongside the implementation so contract changes are reviewed with code changes.
 
-This stack now follows that pattern by serving `/docs` and `/openapi.yaml` from the same HTTP API, protecting the docs URLs with dedicated basic auth, and keeping the upload operations on their existing Basic and Bearer authentication controls.
+This stack now follows that pattern by serving `/docs` and `/openapi.yaml` from the same HTTP API, protecting the docs URLs with dedicated basic auth, and keeping the upload operations on their Entra OAuth2 authentication and application authorisation.
