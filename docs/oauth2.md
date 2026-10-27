@@ -118,3 +118,28 @@ and strict-validation limitations in the consumer guide remain separate work.
 - [Microsoft client credentials](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-client-creds-grant-flow)
 - [Microsoft access-token claims](https://learn.microsoft.com/en-us/entra/identity-platform/access-token-claims-reference)
 - [API Gateway JWT validation](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-jwt-authorizer.html)
+
+## GitHub automated development smoke test
+
+The manual **Test Entra development authentication** workflow runs only from `main`
+in the `file-transfer-api-entra-development` GitHub environment. That environment
+must allow only `main`, require an Integration Hub team reviewer and disable
+self-approval and administrator bypass. It is deliberately unavailable to PR branches.
+
+The development consumer trusts issuer `https://token.actions.githubusercontent.com`,
+audience `api://AzureADTokenExchange`, and subject
+`repo:ministryofjustice/integration-hub-file-transfer-api:environment:file-transfer-api-entra-development`.
+Branch restriction is enforced by GitHub, not by the environment-based subject.
+
+After IDAM applies the trust, set environment variables `ENTRA_TENANT_ID`,
+`ENTRA_API_CLIENT_ID` and `ENTRA_CONSUMER_CLIENT_ID` from the registration outputs.
+These are identifiers, not secrets. Deploy the matching OAuth2 API configuration
+and consumer mapping before running the workflow; the existing Basic-auth deployment
+will not pass. No client secret or Azure subscription login is required.
+
+The test exchanges GitHub's identity token directly with Entra, checks rejection of
+missing/Basic/invalid tokens, checks authenticated request validation, then creates a
+`products-poc` upload ticket and uploads a harmless text file. This can trigger the
+normal scan and Slack notification flow. It does not check scan completion, download,
+multipart transfer or all negative-token fixtures; retain the full acceptance suite
+above. Tokens, assertions and presigned URLs are not logged or saved as artifacts.
