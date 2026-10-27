@@ -43,6 +43,18 @@ class SmokeTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'Unexpected upload destination'):
             self.run_smoke('https://example.test/upload')
 
+    def test_entra_diagnostic_omits_sensitive_fields(self):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            smoke.report_entra_error(json.dumps({
+                'error': 'invalid_client', 'error_codes': [700213, 'private-token'],
+                'correlation_id': '00000000-0000-0000-0000-000000000001',
+                'trace_id': 'private-token', 'error_description': 'private-assertion',
+                'access_token': 'private-token'}).encode())
+        self.assertIn('700213', output.getvalue())
+        self.assertIn('invalid_client', output.getvalue())
+        self.assertNotIn('private', output.getvalue())
+
     def test_http_redirects_are_not_followed(self):
         self.assertIsNone(smoke.NoRedirect().redirect_request(None, None, 302, '', {}, 'https://example.test'))
 
