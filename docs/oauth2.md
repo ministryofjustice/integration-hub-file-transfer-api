@@ -152,3 +152,8 @@ with `/.default`. This must be deployed through IDAM PR #968 before the updated
 test runs. The API Gateway JWT audience and `ENTRA_API_CLIENT_ID` remain the API
 application client ID; do not change them to the URI. Manual clients should use
 the IDAM `token_scope` output rather than constructing it from the API client ID.
+
+For a JWT upload demonstration, run the manual workflow with `upload_only=true`.
+It obtains a fresh token, creates a products-poc upload ticket and sends the sample
+file to S3, without negative authentication checks. The default remains the full
+smoke test. Both modes use the same main-only development identity.

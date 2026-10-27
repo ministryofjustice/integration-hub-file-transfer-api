@@ -2,6 +2,11 @@ name: Test Entra development authentication
 
 on:
   workflow_dispatch:
+    inputs:
+      upload_only:
+        description: 'Only obtain a fresh JWT and upload a sample file'
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -19,6 +24,7 @@ jobs:
       contents: read
       id-token: write
     env:
+      UPLOAD_ONLY: ${{ inputs.upload_only }}
       ENTRA_TENANT_ID: ${{ vars.ENTRA_TENANT_ID }}
       ENTRA_CONSUMER_CLIENT_ID: ${{ vars.ENTRA_CONSUMER_CLIENT_ID }}
       ENTRA_API_CLIENT_ID: ${{ vars.ENTRA_API_CLIENT_ID }}

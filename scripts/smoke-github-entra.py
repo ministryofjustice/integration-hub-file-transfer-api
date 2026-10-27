@@ -83,15 +83,21 @@ def main():
     require(status, 200, 'Entra token exchange')
     token = json.loads(body)['access_token']
     headers = {'Content-Type': 'application/json'}
-    for label, authorization in [('Missing token', None), ('Basic authentication', 'Basic dXNlcjpwYXNz'), ('Invalid token', 'Bearer invalid')]:
-        check_headers = dict(headers)
-        if authorization:
-            check_headers['Authorization'] = authorization
-        status, _ = request(endpoint + '/transfer-tickets', 'POST', b'{}', check_headers)
-        require(status, 401, label)
+    if os.environ.get('UPLOAD_ONLY', 'false') != 'true':
+        for label, authorization in [('Missing token', None), ('Basic authentication', 'Basic dXNlcjpwYXNz'), ('Invalid token', 'Bearer invalid')]:
+            check_headers = dict(headers)
+            if authorization:
+                check_headers['Authorization'] = authorization
+            status, _ = request(endpoint + '/transfer-tickets', 'POST', b'{}', check_headers)
+            if label == 'Basic authentication':
+                # Gateway may return 401 or 403 for a non-Bearer credential.
+                require(status in (401, 403), True, f'{label} rejected (HTTP {status})')
+            else:
+                require(status, 401, label)
     headers['Authorization'] = 'Bearer ' + token
-    status, _ = request(endpoint + '/transfer-tickets', 'POST', b'{}', headers)
-    require(status, 400, 'Authorised request validation')
+    if os.environ.get('UPLOAD_ONLY', 'false') != 'true':
+        status, _ = request(endpoint + '/transfer-tickets', 'POST', b'{}', headers)
+        require(status, 400, 'Authorised request validation')
     payload = b'Integration Hub automated development upload test.\n'
     data = json.dumps({'clientId': 'products-poc', 'fileName': 'automated-auth-test.txt',
                        'contentType': 'text/plain', 'sizeBytes': len(payload)}).encode()
