@@ -67,7 +67,7 @@ def _load_body(event):
         return {}
 
     if event.get("isBase64Encoded"):
-        body = json.loads(base64.b64decode(body).decode("utf-8"))
+        body = json.loads(base64.b64decode(body, validate=True).decode("utf-8"))
     elif isinstance(body, str):
         body = json.loads(body)
 
@@ -201,18 +201,15 @@ def _parse_optional_int(request, field_name):
     if value is None:
         return None, None
 
-    try:
-        return int(value), None
-    except (TypeError, ValueError):
+    if type(value) is not int:
         return None, _response(400, {"message": f"{field_name} must be an integer"})
+    return value, None
 
 
 def _resolve_expiry_seconds(request):
-    try:
-        requested_expiry_seconds = int(request.get("requestedExpirySeconds", DEFAULT_EXPIRY_SECONDS))
-    except (TypeError, ValueError):
+    requested_expiry_seconds = request.get("requestedExpirySeconds", DEFAULT_EXPIRY_SECONDS)
+    if type(requested_expiry_seconds) is not int:
         return None, _response(400, {"message": "requestedExpirySeconds must be an integer"})
-
     return max(1, min(requested_expiry_seconds, MAX_EXPIRY_SECONDS)), None
 
 
@@ -513,19 +510,20 @@ def _normalise_part_numbers(request, session):
     else:
         if part_number_start is None or part_number_end is None:
             return None, _response(400, {"message": "Provide partNumbers or both partNumberStart and partNumberEnd"})
-        try:
-            start_value = int(part_number_start)
-            end_value = int(part_number_end)
-        except (TypeError, ValueError):
+        if type(part_number_start) is not int or type(part_number_end) is not int:
             return None, _response(400, {"message": "partNumberStart and partNumberEnd must be integers"})
+        start_value, end_value = part_number_start, part_number_end
+        if not (1 <= start_value <= MULTIPART_MAX_PARTS and 1 <= end_value <= MULTIPART_MAX_PARTS):
+            return None, _response(400, {"message": f"Part numbers must be between 1 and {MULTIPART_MAX_PARTS}"})
         if start_value > end_value:
             return None, _response(400, {"message": "partNumberStart must be less than or equal to partNumberEnd"})
         values = list(range(start_value, end_value + 1))
 
-    try:
-        normalised = sorted({int(value) for value in values})
-    except (TypeError, ValueError):
+    if len(values) > MULTIPART_MAX_PARTS:
+        return None, _response(400, {"message": "Too many part numbers requested"})
+    if any(type(value) is not int for value in values):
         return None, _response(400, {"message": "Part numbers must be integers"})
+    normalised = sorted(set(values))
 
     if not normalised:
         return None, _response(400, {"message": "At least one part number is required"})
@@ -584,6 +582,18 @@ def _handle_create_transfer_ticket(event):
     file_name = request.get("fileName")
     if not client_id or not file_name:
         return _response(400, {"message": "clientId and fileName are required"})
+
+    for name in ("clientId", "fileName"):
+        value = request.get(name)
+        if not isinstance(value, str) or not value.strip() or any(ord(c) < 32 or ord(c) == 127 for c in value):
+            return _response(400, {"message": f"{name} must be a non-empty string without control characters"})
+    for name in ("contentType", "contentMd5"):
+        value = request.get(name)
+        if value is not None and (not isinstance(value, str) or any(ord(c) < 32 or ord(c) == 127 for c in value)):
+            return _response(400, {"message": f"{name} must be a string without control characters"})
+    for name in ("sizeBytes", "requestedExpirySeconds"):
+        if name in request and type(request[name]) is not int:
+            return _response(400, {"message": f"{name} must be an integer"})
 
     allowed_client_ids = _allowed_client_ids(event)
     record, error_response = _load_and_validate_client(client_id, allowed_client_ids)
