@@ -191,10 +191,12 @@ components:
           example: text/csv
         sizeBytes:
           type: integer
+          description: JSON integer; booleans, fractional numbers and numeric strings are rejected.
           format: int64
           example: 12345
         requestedExpirySeconds:
           type: integer
+          description: JSON integer; booleans, fractional numbers and numeric strings are rejected. Valid integers are clamped to the configured expiry bounds.
           example: 900
         contentMd5:
           type: string

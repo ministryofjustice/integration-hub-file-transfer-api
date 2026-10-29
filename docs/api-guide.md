@@ -481,3 +481,16 @@ Source references for maintaining this guide:
 - [Pickup component](https://github.com/ministryofjustice/modernisation-platform-environments/tree/main/terraform/environments/integration-hub-file-transfer/pull-from-presigned-url): downstream pickup and Slack configuration.
 
 When changing the API, review this guide and OpenAPI together. The limitations above describe current behaviour, not promised future validation or retry guarantees.
+
+
+### Strict input types
+
+Ticket creation requires JSON integers for `sizeBytes` and `requestedExpirySeconds`;
+boolean, fractional and string values return 400. Required identifiers must be
+non-empty strings. File names and optional string metadata cannot contain control
+characters. Multipart URL part numbers/range endpoints must be JSON integers and
+fit the configured part bound before range expansion. These checks do not compare
+the eventual uploaded object size against the declared size.
+
+See [production readiness](production-readiness.md) for outstanding implementation
+and acceptance gates before production activation.

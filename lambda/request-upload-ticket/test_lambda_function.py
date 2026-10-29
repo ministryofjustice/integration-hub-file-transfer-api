@@ -127,6 +127,35 @@ class UploadLambdaTests(unittest.TestCase):
             },
         }
 
+    def test_malformed_create_fields_rejected_before_storage(self):
+        valid = {"clientId": "products-poc", "fileName": "example.csv", "contentType": "text/csv", "sizeBytes": 20}
+        cases = [("sizeBytes", True), ("sizeBytes", 1.5), ("sizeBytes", "20"),
+                 ("requestedExpirySeconds", False), ("requestedExpirySeconds", 2.5),
+                 ("fileName", ["file.csv"]), ("fileName", "bad\nname.csv"),
+                 ("clientId", ["products-poc"]), ("contentType", {}), ("contentMd5", [])]
+        for field, value in cases:
+            with self.subTest(field=field, value=value), patch.object(handler, "DYNAMODB") as db, patch.object(handler, "S3_CLIENT") as s3:
+                body = dict(valid, **{field: value})
+                response = handler.lambda_handler(self._event("POST /transfer-tickets", body), None)
+                self.assertEqual(400, response["statusCode"])
+                db.Table.assert_not_called()
+                self.assertFalse(s3.mock_calls)
+
+    def test_malformed_encoded_body_returns_400(self):
+        event = self._event("POST /transfer-tickets", {})
+        event.update(body="!!!!", isBase64Encoded=True)
+        self.assertEqual(400, handler.lambda_handler(event, None)["statusCode"])
+
+    def test_part_ranges_are_bounded_before_expansion(self):
+        for request in ({"partNumberStart": 1, "partNumberEnd": 10**15},
+                        {"partNumbers": [True]}, {"partNumbers": [1.5]},
+                        {"partNumberStart": "1", "partNumberEnd": 2},
+                        {"partNumbers": [1] * (handler.MULTIPART_MAX_PARTS + 1)}):
+            with self.subTest(request=str(request)[:80]):
+                parts, error = handler._normalise_part_numbers(request, {"total_parts": 3})
+                self.assertIsNone(parts)
+                self.assertEqual(400, error["statusCode"])
+
     def test_invalid_identity_rejected_before_any_side_effect(self):
         cases = [
             {"tid": "wrong"}, {"aud": "wrong"}, {"iss": "https://attacker.test"},
