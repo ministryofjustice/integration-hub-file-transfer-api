@@ -10,16 +10,16 @@ put {
   auth: none
 }
 
-headers {
-  x-amz-server-side-encryption: {{sse}}
-  x-amz-server-side-encryption-aws-kms-key-id: {{kms_key}}
-  x-amz-meta-client-id: {{client_id}}
-  x-amz-meta-original-file-name: {{original_file_name}}
-  x-amz-meta-transfer-ticket: {{transfer_ticket}}
-  Content-Type: {{content_type}}
-  Content-MD5: {{content_md5}}
+body:file {
+  file: @file()
 }
 
-body:file {
-  file: @file(example-upload.csv) @contentType(text/csv)
+script:pre-request {
+  const url = bru.getVar("upload_url");
+  const headers = bru.getVar("upload_headers");
+  if (!url || !headers) {
+    throw new Error("Run Get Transfer Ticket successfully before uploading.");
+  }
+  req.deleteHeader("Authorization");
+  Object.entries(headers).forEach(([name, value]) => req.setHeader(name, value));
 }

@@ -1,0 +1,37 @@
+meta {
+  name: Get Entra Application Token
+  type: http
+  seq: 0
+}
+
+post {
+  url: {{entra_token_url}}
+  body: formUrlEncoded
+  auth: none
+}
+
+headers {
+  Content-Type: application/x-www-form-urlencoded
+}
+
+body:form-urlencoded {
+  grant_type: client_credentials
+  client_id: {{entra_client_id}}
+  client_secret: {{entra_client_secret}}
+  scope: {{entra_scope}}
+}
+
+script:pre-request {
+  bru.deleteVar("entra_access_token");
+  if (!bru.getVar("entra_client_secret")) {
+    throw new Error("Configure the IDAM-approved local development credential before requesting a token.");
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (res.getStatus() !== 200 || typeof body.access_token !== "string") {
+    throw new Error("Entra did not issue a token. Check the response securely; do not share credentials or token bodies.");
+  }
+  bru.setVar("entra_access_token", body.access_token);
+}
