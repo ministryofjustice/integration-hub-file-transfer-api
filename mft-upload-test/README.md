@@ -5,18 +5,14 @@ The environment file contains the API address and Entra application IDs. Keep yo
 client secret in Bruno's secret environment variable `entra_client_secret`, not in
 this file or a request. Use the secret **value**, not its ID.
 
-The development consumer is already registered. Once its client secret is configured,
-Bruno requests tokens directly from Entra. You do not need to ask IDAM for each token.
-Your personal DEVL password is not the client secret.
+The development application is already registered. Add its client secret once in
+Bruno, then use the token request whenever you need a fresh access token.
 
 ## 1. Get a token
 
 Run **Get Entra Application Token**. It sends the client ID, secret and scope to the
 Entra token endpoint. A successful response is HTTP 200; the response script sets
 `entra_access_token` for the ticket request. Run this again when the token expires.
-If you use Bruno's built-in OAuth2 instead, configure Client Credentials with the
-same environment values; a token obtained there does not automatically populate
-this collection's separate Bearer variable.
 
 ## 2. Request an upload ticket
 
@@ -53,6 +49,4 @@ and upload each part before completing; this single-file request is not that flo
 - **S3 signature error:** get a fresh ticket, use its exact URL and headers, and select
   the matching file. The sample does not require an MD5 header.
 
-Keep credentials, access tokens and signed URLs out of Git and shared screenshots.
-Only add the local development client secret through the approved account process;
-production consumers need their own credential setup.
+Keep the client secret, access tokens and signed URLs out of Git and shared screenshots.
