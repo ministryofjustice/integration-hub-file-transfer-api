@@ -46,7 +46,8 @@ Send a form-encoded POST to:
 https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token
 ```
 
-For a secret-based development consumer, the form fields are:
+For local Bruno testing, use the client secret configured on the development consumer.
+Tokens are requested directly from Entra; IDAM does not issue each token. The form fields are:
 
 ```text
 grant_type=client_credentials
@@ -55,7 +56,8 @@ client_secret=<securely-provided-secret>
 scope=<API-Application-ID-URI>/.default
 ```
 
-Use the actual API URI supplied by the Entra owner (often `api://<API-application-id>`).
+Use the configured API URI. The development scope is
+`api://0bb413d7-160d-4839-868a-f3d46537f6af/integration-hub-file-transfer-api/.default`.
 The response contains `access_token`, `token_type` and `expires_in`. Cache the token
 until shortly before expiry, then acquire another. Client credentials does not use a
 refresh token. Never log token responses or put secrets into a committed collection.
@@ -157,3 +159,5 @@ For a JWT upload demonstration, run the manual workflow with `upload_only=true`.
 It obtains a fresh token, creates a products-poc upload ticket and sends the sample
 file to S3, without negative authentication checks. The default remains the full
 smoke test. Both modes use the same main-only development identity.
+
+For the local request sequence and troubleshooting, see the [Bruno guide](../mft-upload-test/README.md).
