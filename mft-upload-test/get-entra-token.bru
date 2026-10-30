@@ -23,9 +23,6 @@ body:form-urlencoded {
 
 script:pre-request {
   bru.deleteVar("entra_access_token");
-  if (!bru.getVar("entra_client_secret")) {
-    throw new Error("Configure the IDAM-approved local development credential before requesting a token.");
-  }
 }
 
 script:post-response {
