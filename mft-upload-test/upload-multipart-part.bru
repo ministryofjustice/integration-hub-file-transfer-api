@@ -1,0 +1,38 @@
+meta {
+  name: Upload Multipart Part To S3
+  type: http
+  seq: 6
+}
+
+put {
+  url: {{part_1_url}}
+  body: file
+  auth: none
+}
+
+body:file {
+  file: @file()
+}
+
+script:pre-request {
+  const number = Number(bru.getVar("multipart_part_number") || 1);
+  const urls = bru.getVar("multipart_part_urls") || {};
+  if (!Number.isInteger(number) || !urls[number]) {
+    throw new Error("Choose a valid multipart_part_number and presign its URL first.");
+  }
+  const uploaded = bru.getVar("multipart_uploaded_parts") || [];
+  bru.setVar("multipart_uploaded_parts", uploaded.filter(part => part.partNumber !== number));
+  bru.setVar("multipart_uploading_part", number);
+  req.setUrl(urls[number]);
+  req.deleteHeader("Authorization");
+}
+
+script:post-response {
+  const etag = res.getHeader("etag");
+  if (res.getStatus() !== 200 || !etag) {
+    throw new Error("S3 did not confirm the part upload with an ETag. Do not complete yet.");
+  }
+  const parts = bru.getVar("multipart_uploaded_parts") || [];
+  parts.push({partNumber: bru.getVar("multipart_uploading_part"), eTag: etag});
+  bru.setVar("multipart_uploaded_parts", parts);
+}

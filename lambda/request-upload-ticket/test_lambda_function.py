@@ -27,6 +27,13 @@ os.environ["ENTRA_TENANT_ID"] = "tenant-test"
 os.environ["ENTRA_API_AUDIENCE"] = "api-test"
 os.environ["ENTRA_APPLICATION_CLIENTS"] = json.dumps({"consumer-test": ["products-poc"], "other-consumer": ["other-client"]})
 
+class FakeClientError(Exception):
+    def __init__(self, code):
+        self.response = {"Error": {"Code": code}}
+
+
+sys.modules["botocore.exceptions"] = SimpleNamespace(ClientError=FakeClientError)
+
 import lambda_function as handler
 
 
@@ -288,6 +295,35 @@ class UploadLambdaTests(unittest.TestCase):
         self.assertEqual("upload-1", call["UploadId"])
         self.assertEqual([1, 2], [p["PartNumber"] for p in call["MultipartUpload"]["Parts"]])
         self.assertEqual("completed", json.loads(response["body"])["status"])
+
+    def test_s3_completion_errors_return_useful_status_without_completing_session(self):
+        for code, status in (("InvalidPart", 400), ("InvalidPartOrder", 400),
+                             ("EntityTooSmall", 400), ("InvalidRequest", 400), ("NoSuchUpload", 404)):
+            self._active_session()
+            with self.subTest(code=code), patch.object(handler, "DYNAMODB", self.fake_dynamo), patch.object(handler, "S3_CLIENT") as s3, patch.object(handler, "_update_multipart_session") as update:
+                s3.complete_multipart_upload.side_effect = FakeClientError(code)
+                response = handler.lambda_handler(self._event(
+                    "POST /transfer-tickets/{transferTicket}/complete",
+                    {"parts": [{"partNumber": 1, "eTag": '"actual-etag"'}]},
+                    {"transferTicket": "ticket"}), None)
+                self.assertEqual(status, response["statusCode"])
+                self.assertEqual(code, json.loads(response["body"])["code"])
+                update.assert_not_called()
+
+    def test_completion_rejects_coerced_part_number_and_etag(self):
+        self._active_session()
+        for part in ({"partNumber": True, "eTag": "tag"}, {"partNumber": 1.5, "eTag": "tag"}, {"partNumber": 1, "eTag": None}):
+            with patch.object(handler, "DYNAMODB", self.fake_dynamo), patch.object(handler, "S3_CLIENT") as s3:
+                response = handler.lambda_handler(self._event("POST /transfer-tickets/{transferTicket}/complete", {"parts": [part]}, {"transferTicket": "ticket"}), None)
+                self.assertEqual(400, response["statusCode"])
+                s3.complete_multipart_upload.assert_not_called()
+
+    def test_unexpected_s3_completion_error_is_not_reported_as_client_error(self):
+        self._active_session()
+        with patch.object(handler, "DYNAMODB", self.fake_dynamo), patch.object(handler, "S3_CLIENT") as s3:
+            s3.complete_multipart_upload.side_effect = FakeClientError("AccessDenied")
+            with self.assertRaises(FakeClientError):
+                handler.lambda_handler(self._event("POST /transfer-tickets/{transferTicket}/complete", {"parts": [{"partNumber": 1, "eTag": "tag"}]}, {"transferTicket": "ticket"}), None)
 
     def test_abort_uses_session_bucket_and_upload_id(self):
         self._active_session()
