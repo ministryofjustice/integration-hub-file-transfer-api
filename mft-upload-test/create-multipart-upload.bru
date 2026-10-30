@@ -28,8 +28,22 @@ body:json {
   }
 }
 
+script:pre-request {
+  bru.deleteVar("multipart_part_urls");
+  bru.deleteVar("multipart_uploaded_parts");
+  bru.deleteVar("part_1_url");
+}
+
 script:post-response {
   const ticket = res.getBody();
+  if (res.getStatus() !== 200 || !ticket.multipart) {
+    throw new Error("No multipart upload ticket returned.");
+  }
+  bru.setVar("multipart_uploaded_parts", []);
+  const urls = {};
+  ticket.multipart.initialParts.forEach(part => { urls[part.partNumber] = part.url; });
+  bru.setVar("multipart_part_urls", urls);
+  bru.setVar("multipart_part_number", 1);
   const firstPart = ticket["multipart"]["initialParts"][0];
 
   bru.setVar("transfer_ticket", ticket["transferTicket"]);

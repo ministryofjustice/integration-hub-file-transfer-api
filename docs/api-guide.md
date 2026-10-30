@@ -481,3 +481,10 @@ Source references for maintaining this guide:
 - [Pickup component](https://github.com/ministryofjustice/modernisation-platform-environments/tree/main/terraform/environments/integration-hub-file-transfer/pull-from-presigned-url): downstream pickup and Slack configuration.
 
 When changing the API, review this guide and OpenAPI together. The limitations above describe current behaviour, not promised future validation or retry guarantees.
+
+
+Multipart completion returns 400 with a useful message for S3 `InvalidPart`,
+`InvalidPartOrder`, `EntityTooSmall` and `InvalidRequest` failures. `NoSuchUpload`
+returns 404. These errors do not mark the session completed. Unknown S3 failures
+continue to surface as server errors; an ambiguous completion timeout still needs
+investigation before retrying. Use the actual ETags returned by each part PUT.

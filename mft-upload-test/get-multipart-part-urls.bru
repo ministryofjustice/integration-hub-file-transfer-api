@@ -24,3 +24,13 @@ body:json {
     "partNumberEnd": 3
   }
 }
+
+script:post-response {
+  const body = res.getBody();
+  if (res.getStatus() !== 200 || !Array.isArray(body.parts)) {
+    throw new Error("No multipart part URLs returned.");
+  }
+  const urls = bru.getVar("multipart_part_urls") || {};
+  body.parts.forEach(part => { urls[part.partNumber] = part.url; });
+  bru.setVar("multipart_part_urls", urls);
+}

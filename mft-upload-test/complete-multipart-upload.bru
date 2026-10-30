@@ -1,7 +1,7 @@
 meta {
   name: Complete Multipart Upload
   type: http
-  seq: 6
+  seq: 7
 }
 
 post {
@@ -19,12 +19,13 @@ auth:bearer {
 }
 
 body:json {
-  {
-    "parts": [
-      {
-        "partNumber": 1,
-        "eTag": "\"replace-with-uploaded-part-etag\""
-      }
-    ]
+  {"parts": []}
+}
+
+script:pre-request {
+  const parts = bru.getVar("multipart_uploaded_parts") || [];
+  if (!parts.length) {
+    throw new Error("Upload each part to S3 first. Completion needs S3's returned ETags.");
   }
+  req.setBody({parts: [...parts].sort((a, b) => a.partNumber - b.partNumber)});
 }

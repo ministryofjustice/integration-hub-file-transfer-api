@@ -11,6 +11,7 @@ from pathlib import Path
 
 import boto3
 from botocore.config import Config
+from botocore.exceptions import ClientError
 
 
 AWS_REGION = os.environ.get("AWS_REGION", "eu-west-2")
@@ -683,10 +684,13 @@ def _handle_complete_multipart(event):
     normalised_parts = []
     try:
         for entry in parts:
-            part_number = int(entry["partNumber"])
-            etag = str(entry["eTag"]).strip()
-            if not etag:
-                raise ValueError("ETag must not be empty")
+            part_number = entry["partNumber"]
+            etag = entry["eTag"]
+            if type(part_number) is not int:
+                raise ValueError("partNumber must be an integer")
+            if not isinstance(etag, str) or not etag.strip():
+                raise ValueError("eTag must be a non-empty string returned by S3")
+            etag = etag.strip()
             normalised_parts.append({"PartNumber": part_number, "ETag": etag})
     except (KeyError, TypeError, ValueError) as exc:
         return _response(400, {"message": f"Invalid multipart completion payload: {exc}"})
@@ -704,12 +708,27 @@ def _handle_complete_multipart(event):
 
     if any(item["PartNumber"] < 1 or item["PartNumber"] > MULTIPART_MAX_PARTS for item in normalised_parts):
         return _response(400, {"message": f"partNumber must be between 1 and {MULTIPART_MAX_PARTS}"})
-    complete_response = S3_CLIENT.complete_multipart_upload(
-        Bucket=session["bucket"],
-        Key=session["object_key"],
-        UploadId=session["upload_id"],
-        MultipartUpload={"Parts": normalised_parts},
-    )
+    try:
+        complete_response = S3_CLIENT.complete_multipart_upload(
+            Bucket=session["bucket"],
+            Key=session["object_key"],
+            UploadId=session["upload_id"],
+            MultipartUpload={"Parts": normalised_parts},
+        )
+    except ClientError as exc:
+        code = exc.response.get("Error", {}).get("Code", "")
+        errors = {
+            "InvalidPart": (400, "One or more parts were not uploaded or their ETags do not match. Use the ETag returned by each S3 part PUT."),
+            "InvalidPartOrder": (400, "Multipart parts are not in a valid order."),
+            "EntityTooSmall": (400, "Every part except the last must be at least 5 MiB."),
+            "InvalidRequest": (400, "S3 rejected the multipart completion request. Check the uploaded parts and completion payload."),
+            "NoSuchUpload": (404, "The multipart upload no longer exists. It may have been completed, aborted or expired."),
+        }
+        if code not in errors:
+            raise
+        status, message = errors[code]
+        return _response(status, {"message": message, "code": code})
+
 
     _update_multipart_session(
         transfer_ticket,

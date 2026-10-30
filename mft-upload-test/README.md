@@ -50,3 +50,24 @@ and upload each part before completing; this single-file request is not that flo
   the matching file. The sample does not require an MD5 header.
 
 Keep the client secret, access tokens and signed URLs out of Git and shared screenshots.
+
+## Multipart upload
+
+Creating a multipart ticket and presigning URLs do not send any file bytes.
+
+1. Create a ticket using the actual file name, type and size. The sample create
+   request declares 10 GiB; replace it with your real file size. The API selects
+   multipart only above its configured single-file threshold.
+2. Split the file into numbered chunks using the returned `partSizeBytes`.
+3. In **Upload Multipart Part To S3**, select the chunk file. Set the runtime variable
+   `multipart_part_number` to its part number (starts at 1), and send. S3 must return
+   200 and an `ETag` header. The script records that ETag for completion. Repeat for
+   every chunk; use **Presign Multipart Part URLs** to request more URLs if needed.
+4. Run **Complete Multipart Upload**. It uses the collected part numbers and ETags;
+   there is no placeholder to replace. The API URL ends in
+   `/transfer-tickets/{{transfer_ticket}}/complete`. Reacquire a JWT if it expires.
+
+Upload the entire file before completion; the collection does not prove that all
+bytes match your declaration. Every chunk except the final one must be at least
+5 MiB. An ETag must come from the corresponding S3 PUT, not from the token, ticket
+or presign response. Preserve its surrounding quotes when entering one manually.
