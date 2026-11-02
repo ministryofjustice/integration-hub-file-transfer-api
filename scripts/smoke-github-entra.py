@@ -58,13 +58,11 @@ def require(status, expected, label):
         raise RuntimeError(f'{label} failed')
 
 
-def main():
+def acquire_token():
     tenant = str(uuid.UUID(os.environ['ENTRA_TENANT_ID']))
     consumer = str(uuid.UUID(os.environ['ENTRA_CONSUMER_CLIENT_ID']))
     # Validate the configured audience ID; the requested resource URI uses the tenant.
     uuid.UUID(os.environ['ENTRA_API_CLIENT_ID'])
-    # Fixed development endpoint avoids sending an access token to an arbitrary input.
-    endpoint = 'https://5yc80qz674.execute-api.eu-west-2.amazonaws.com'
     oidc_url = os.environ['ACTIONS_ID_TOKEN_REQUEST_URL']
     oidc_url += ('&' if '?' in oidc_url else '?') + urllib.parse.urlencode({'audience': 'api://AzureADTokenExchange'})
     status, body = request(oidc_url, headers={'Authorization': 'Bearer ' + os.environ['ACTIONS_ID_TOKEN_REQUEST_TOKEN']})
@@ -81,7 +79,12 @@ def main():
     if status != 200:
         report_entra_error(body)
     require(status, 200, 'Entra token exchange')
-    token = json.loads(body)['access_token']
+    return json.loads(body)['access_token']
+
+
+def main():
+    endpoint = 'https://5yc80qz674.execute-api.eu-west-2.amazonaws.com'
+    token = acquire_token()
     headers = {'Content-Type': 'application/json'}
     if os.environ.get('UPLOAD_ONLY', 'false') != 'true':
         for label, authorization in [('Missing token', None), ('Basic authentication', 'Basic dXNlcjpwYXNz'), ('Invalid token', 'Bearer invalid')]:

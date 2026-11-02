@@ -161,3 +161,5 @@ file to S3, without negative authentication checks. The default remains the full
 smoke test. Both modes use the same main-only development identity.
 
 For the local request sequence and troubleshooting, see the [Bruno guide](../mft-upload-test/README.md).
+
+For the deployed security and multipart failure checks, see [development acceptance](development-acceptance.md).

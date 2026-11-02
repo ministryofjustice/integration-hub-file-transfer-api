@@ -12,3 +12,8 @@ env/
 terraform.tfstate
 **/__pycache__/
 *.pyc
+
+# Local acceptance evidence
+security-results.json
+recovery-results.json
+operations-results.json

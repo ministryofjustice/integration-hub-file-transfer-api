@@ -1,0 +1,74 @@
+name: Development security and recovery acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: 'Security is read-only. Recovery uploads a 6 GiB file and may send a pickup notification.'
+        type: choice
+        options: [security, recovery]
+        default: security
+
+permissions: {}
+
+concurrency:
+  group: file-transfer-api-entra-development
+  cancel-in-progress: false
+
+jobs:
+  acceptance:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: file-transfer-api-entra-development
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      EXPIRED_TRANSFER_TICKET: ${{ vars.EXPIRED_TRANSFER_TICKET }}
+      ENTRA_TENANT_ID: ${{ vars.ENTRA_TENANT_ID }}
+      ENTRA_CONSUMER_CLIENT_ID: ${{ vars.ENTRA_CONSUMER_CLIENT_ID }}
+      ENTRA_API_CLIENT_ID: ${{ vars.ENTRA_API_CLIENT_ID }}
+      ENTRA_EXPIRED_TOKEN: ${{ secrets.ENTRA_EXPIRED_TOKEN }}
+      ENTRA_WRONG_AUDIENCE_TOKEN: ${{ secrets.ENTRA_WRONG_AUDIENCE_TOKEN }}
+      ENTRA_WRONG_TENANT_TOKEN: ${{ secrets.ENTRA_WRONG_TENANT_TOKEN }}
+      ENTRA_USER_TOKEN: ${{ secrets.ENTRA_USER_TOKEN }}
+      ENTRA_MISSING_ROLE_TOKEN: ${{ secrets.ENTRA_MISSING_ROLE_TOKEN }}
+      ENTRA_UNMAPPED_APP_TOKEN: ${{ secrets.ENTRA_UNMAPPED_APP_TOKEN }}
+      ENTRA_OTHER_CUSTOMER_TOKEN: ${{ secrets.ENTRA_OTHER_CUSTOMER_TOKEN }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: Check deployed authentication boundaries
+        if: inputs.suite == 'security'
+        run: python scripts/acceptance-security.py
+      - name: Create disposable recovery file
+        if: inputs.suite == 'recovery'
+        run: truncate -s 6G "$RUNNER_TEMP/recovery-acceptance.bin"
+      - name: Exercise multipart recovery and expiry
+        if: inputs.suite == 'recovery'
+        run: python scripts/acceptance-recovery.py "$RUNNER_TEMP/recovery-acceptance.bin" --check-expiry
+      - name: Record acceptance status
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
+              for name in ('security-results.json', 'recovery-results.json'):
+                  path = Path(name)
+                  if not path.exists():
+                      continue
+                  data = json.loads(path.read_text())
+                  out.write(f'### {name}\n\n')
+                  counts = {}
+                  for result in data['results']:
+                      counts[result['result']] = counts.get(result['result'], 0) + 1
+                  out.write(', '.join(f'{key}: {value}' for key, value in counts.items()) + '\n\n')
+                  out.write('Missing fixtures and unverified collection/cleanup checks are not acceptance passes. Reports remain in the job log; tokens and URLs are never included.\n')
+          PY
