@@ -1,123 +1,133 @@
-# Development security and recovery checks
+# Test authentication and upload recovery
 
-These tests use the deployed development API. They are separate from unit tests and
-production sign-off. The recovery suite uploads a real file, so it can trigger scanning
-and the normal pickup notification.
+Use these checks before a release to catch problems that a successful upload won't
+show. Both suites run against development. Recovery uploads a 6 GiB test file, which
+will go through scanning and may produce a Slack pickup message.
 
-## Security checks
+## Run from GitHub
 
-From GitHub Actions, run **Development security and recovery acceptance**, choose
-`security`, and use `main`. It obtains a fresh application token using the existing
-GitHub trust. No client secret is needed. The job prints one result per route/case.
+Open **Actions → Development security and recovery acceptance → Run workflow**.
+Choose `main`, then select `security` or `recovery`.
 
-It checks missing, invalid, tampered, Basic and static-token rejection; the valid-token
-boundary; and a customer ID outside products-poc's grant. An unknown multipart ticket
-with an authorised token should reach the handler and return 404. Basic rejection can
-be 401 or 403; missing/invalid Bearer tokens must return 401.
+The workflow gets a fresh Entra token through GitHub's existing identity setup.
+You don't need a client secret. Runs share a queue with the regular smoke test, so
+only one of them runs at a time.
 
-The following additional environment secrets supply real token fixtures:
+Results appear in the job log and summary. A missing test token or an unchecked
+result is shown as incomplete, rather than passed:
 
-| Secret | Fixture needed | Expected |
+| Exit code | Meaning |
+| --- | --- |
+| 0 | Every check in the report passed |
+| 1 | A check failed |
+| 2 | Some checks still need tokens or manual verification |
+
+## Authentication checks
+
+The security suite checks all four upload routes with missing, invalid, tampered and
+legacy credentials. It also checks an authorised token and an attempt to upload for
+a customer outside its grant.
+
+Missing or invalid Bearer tokens should return 401. Old Basic credentials may return
+401 or 403. An authorised request with an unknown multipart ticket should reach the
+handler and return 404.
+
+For the remaining cases, add real test tokens as secrets in the
+`file-transfer-api-entra-development` GitHub environment:
+
+| Secret | Token to use | Expected response |
 | --- | --- | --- |
-| `ENTRA_EXPIRED_TOKEN` | Previously valid, now expired token for this API | 401 |
-| `ENTRA_WRONG_AUDIENCE_TOKEN` | Valid Entra token for a different resource | 401 |
-| `ENTRA_WRONG_TENANT_TOKEN` | Valid token issued by a different approved test tenant | 401 |
-| `ENTRA_USER_TOKEN` | Valid delegated-user token for this API | 403 |
-| `ENTRA_MISSING_ROLE_TOKEN` | Application token for this API without FileTransfer.Upload | 403 |
-| `ENTRA_UNMAPPED_APP_TOKEN` | Application token with the upload role but no API client mapping | 403 |
+| `ENTRA_EXPIRED_TOKEN` | A token for this API that has expired | 401 |
+| `ENTRA_WRONG_AUDIENCE_TOKEN` | A token for another API | 401 |
+| `ENTRA_WRONG_TENANT_TOKEN` | A token from another approved test tenant | 401 |
+| `ENTRA_USER_TOKEN` | A delegated user token for this API | 403 |
+| `ENTRA_MISSING_ROLE_TOKEN` | An application token without `FileTransfer.Upload` | 403 |
+| `ENTRA_UNMAPPED_APP_TOKEN` | An application token with the upload role, but no customer mapping | 403 |
 
-Request any extra test identities/grants through IDAM. A missing-role application
-must still have an allowed assignment if Entra requires assignment to issue a token;
-use an approved non-upload role. Do not weaken the API registration or add user
-sign-in just to manufacture a fixture. If a scenario cannot be issued by policy,
-record the issuer's denial and the relevant handler unit test as separate evidence,
-with reviewer agreement. Changing a JWT payload is a signature test, not a valid
-wrong-tenant or missing-role fixture.
+Keep the tokens current, apart from the one used to test expiry. Some cases need
+additional test applications or grants from IDAM. For example, Entra may require
+an assignment before it will issue a token to the application used for the missing-role
+check. An approved non-upload role can provide that assignment.
 
-Fixtures must be current except for the expired-token case. Store no tokens in files,
-reports, PRs or issue comments. Missing fixtures are reported as **missing**, not pass.
-The job exits 2 for incomplete evidence and 1 for an actual failure. It is deliberately
-not green when part of the acceptance set has not run.
+If Entra policy prevents a particular token from being issued, record that result
+and agree with the reviewer how to cover the handler check. Don't enable user sign-in
+or weaken the registration just to obtain a test token. Editing a JWT tests its
+signature; it doesn't replace a genuine wrong-tenant or missing-role token.
 
-For local execution, enter a fresh token without placing it in shell history:
+## Multipart recovery checks
+
+The recovery suite uploads a test file and checks:
+
+- Retry after closing a part upload before it finishes.
+- Uploading a part again and completing with its latest ETag.
+- Correcting a rejected ETag and completing the transfer.
+- Calling completion a second time; the current response is 409.
+- Aborting a partially uploaded file, then checking that further operations return 409.
+- Letting a part URL expire, requesting another and continuing the same session.
+
+URL expiry and session expiry are different. The URL test uses a three-second URL
+and aborts its test upload afterwards. It doesn't change the shared session lifetime.
+
+To check an expired session, set the GitHub environment variable
+`EXPIRED_TRANSFER_TICKET` to a known test ticket older than the session TTL. The
+runner expects the explicit expired-session 409 response, or 404 once the record
+has been deleted. A 409 caused only by an already completed or aborted session
+doesn't count as an expiry check. Without an aged ticket, this check stays incomplete.
+
+For access checks against another customer's session, add
+`ENTRA_OTHER_CUSTOMER_TOKEN`. It must belong to a separate, authorised application
+mapped to a different test customer. The runner first checks that this application
+can reach the API, then expects 403 when it tries to presign, complete or abort the
+products-poc session. An unmapped application isn't a substitute for this test.
+
+The script uploads the source once, plus two extra first-part uploads for retry and
+abort checks. It streams from disk and requests new part URLs as needed. GitHub can
+also obtain a fresh API token during a long run. Local runs need a current token.
+If completion times out, inspect the reported ticket before restarting; the file
+may already have completed.
+
+## Run locally
+
+Use a fresh token from Bruno. Enter it at the hidden prompt without putting it in
+shell history:
 
 ```sh
 read -rs ENTRA_ACCESS_TOKEN
 export ENTRA_ACCESS_TOKEN
 python3 scripts/acceptance-security.py
+python3 scripts/acceptance-recovery.py /path/to/sample_6gb.dat --check-expiry
 unset ENTRA_ACCESS_TOKEN
 ```
 
-The script is fixed to the development API and never follows redirects with tokens.
-No production endpoint override is provided.
+The recovery file must really be larger than 5 GiB. Use a disposable file rather
+than customer data. Both scripts use the development API address.
 
-## Recovery checks
+## Check the downloaded file
 
-Run the workflow with `recovery` to create a disposable 6 GiB file and exercise:
-
-- An incomplete S3 part PUT, followed by retry of that part.
-- A duplicate PUT, using the latest returned ETag at completion.
-- An invalid completion ETag, then successful completion of the full source file.
-- A repeated completion: the current contract is **409**, not an idempotent success.
-- Abort after uploading a part; presign, completion and another abort then return 409.
-- An expired S3 part URL (403), renewal within an active session, then successful
-  part upload and abort.
-
-The current main separates the session lifetime from signed URL expiry. The runner
-requests a three-second URL, waits for it to expire, gets a fresh URL for the same
-active session, uploads a part and aborts. It does not leave that test upload pending.
-
-An actually expired session needs an aged fixture. Set the environment variable
-`EXPIRED_TRANSFER_TICKET` to the UUID of a known controlled test session older than
-its configured session TTL. Presign/complete/abort must return the explicit expired
-409 response, or 404 after TTL deletion. An ordinary inactive-session 409 does not
-count. Do not shorten the shared development session lifetime just for a test.
-If no aged ticket is supplied, this case remains **missing**. Verify bucket cleanup
-separately; DynamoDB deletion alone does not remove S3 multipart parts.
-
-Cross-customer session checks also need `ENTRA_OTHER_CUSTOMER_TOKEN`: a current,
-separately mapped upload application's token for a different approved test customer.
-The runner first proves it is a valid authorised application with an empty create
-request (400), then expects 403 for presign/complete/abort against products-poc's real
-session. Do not use an unmapped or missing-role token as a substitute. Configure a
-second test consumer/customer only after agreeing its grants and S3 prefix isolation.
-
-Local run with the same token environment setup:
-
-```sh
-python3 scripts/acceptance-recovery.py /path/to/sample_6gb.dat --check-expiry
-```
-
-The script streams the file in small reads. It uploads the source once, plus two extra
-first-part PUTs for retry/abort checks. It requests new part URLs as needed but the API
-token can still expire during a slow run; obtain fresh credentials before starting.
-It does not automatically restart an upload or abort after an ambiguous completion.
-Inspect the reported ticket first. Never use a real customer file for fault testing.
-
-After collection, compare the downloaded file with the source:
+Collect the completed file through the normal pickup flow, then compare it with
+the source:
 
 ```sh
 shasum -a 256 /path/to/source /path/to/download
 ```
 
-The two hashes must match. To update the existing report without making network calls:
+The hashes should match. To record the comparison in the existing recovery report:
 
 ```sh
 python3 scripts/acceptance-recovery.py /path/to/source --verify-download /path/to/download
 ```
 
-Until then the JSON report leaves collection/checksum verification **unverified**,
-because the runner cannot authenticate to the pickup site or inspect Slack. Keep that evidence and lifecycle verification with the run's revision/time and
-tickets. A single script exit code is not the entire acceptance decision.
+This command only reads the two local files. Until then, the report shows the
+checksum check as unverified. Slack delivery and S3 cleanup also need separate
+checks; the runner can't infer them from a successful completion response.
 
-## Evidence and capacity
+## Keep the results
 
-Results are written to `security-results.json` or `recovery-results.json` and printed
-in the job log. They contain case names, status codes and test ticket IDs, not response
-bodies, access tokens, signed URLs or ETags. Don't change the scripts to dump HTTP
-objects when diagnosing a failure. Local evidence files are ignored by Git.
+The scripts write `security-results.json` and `recovery-results.json`. Reports include
+the revision, time, case names, status codes and test ticket IDs. They leave out
+response bodies, tokens, signed URLs and ETags. Local reports are ignored by Git.
+Keep the reports with the download and cleanup results for the release being tested.
 
-The job is manual, main-only and shares the existing smoke workflow's concurrency
-lock. It does not generate concurrent customer traffic. Agree a separate load-test
-window and cost/volume limit before capacity testing. Start with low concurrency,
-measure API errors/throttles/latency and S3 throughput, then raise load gradually.
+These suites aren't a load test. Agree a separate development test window and data
+volume before increasing concurrency. Start small and measure API latency, errors,
+throttling and S3 throughput as the load increases.

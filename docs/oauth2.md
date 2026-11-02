@@ -1,9 +1,8 @@
 # Entra application authentication
 
-This change replaces Basic and static bearer authentication on all upload operations.
-It does not make the production service accepted under D07 on its own. Do not merge
-or deploy until the infrastructure configuration and acceptance prerequisites below
-are ready. The main-branch application workflow deploys automatically to development.
+Upload operations use Entra application tokens. Documentation routes keep their
+separate authentication. The API repository deploys application changes to
+development when they are merged into `main`.
 
 ## Registration checklist for the Entra owner
 
@@ -110,10 +109,9 @@ expected/actual HTTP codes and pass/fail; never retain raw tokens. Test wrong-te
 wrong-audience, expired, tampered, delegated-user, missing-role and unmapped-app tokens.
 A deliberately tampered signature is not a substitute for all these fixtures.
 
-D07 completion still requires production deployment, approved harmless production
-connectivity/payload/encryption tests, a smoke run with zero critical errors, configured
-operational alerts and explicit Buyer SecOps/Infra sign-off. Existing upload reliability
-and strict-validation limitations in the consumer guide remain separate work.
+Before production release, verify connectivity, payload integrity and encryption,
+exercise the operational alerts, and get the security and infrastructure leads'
+sign-off on the smoke-test results. See the consumer guide for the remaining upload and validation limitations.
 
 ## References
 
