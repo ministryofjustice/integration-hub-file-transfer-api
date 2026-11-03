@@ -21,9 +21,9 @@ auth:bearer {
 body:json {
   {
     "clientId": "products-poc",
-    "fileName": "large-example-upload.csv",
-    "contentType": "text/csv",
-    "sizeBytes": 10737418240,
+    "fileName": "sample_6gb.dat",
+    "contentType": "application/octet-stream",
+    "sizeBytes": 6442450944,
     "requestedExpirySeconds": 3600
   }
 }
@@ -32,6 +32,7 @@ script:pre-request {
   bru.deleteVar("multipart_part_urls");
   bru.deleteVar("multipart_uploaded_parts");
   bru.deleteVar("part_1_url");
+  bru.deleteVar("multipart_total_parts");
 }
 
 script:post-response {
@@ -40,6 +41,10 @@ script:post-response {
     throw new Error("No multipart upload ticket returned.");
   }
   bru.setVar("multipart_uploaded_parts", []);
+  bru.setVar("multipart_total_parts", ticket.multipart.totalParts);
+  const source = req.getBody();
+  bru.setVar("multipart_declared_size", source.sizeBytes);
+  bru.setVar("multipart_source_name", source.fileName);
   const urls = {};
   ticket.multipart.initialParts.forEach(part => { urls[part.partNumber] = part.url; });
   bru.setVar("multipart_part_urls", urls);

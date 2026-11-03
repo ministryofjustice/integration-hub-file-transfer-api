@@ -51,23 +51,64 @@ and upload each part before completing; this single-file request is not that flo
 
 Keep the client secret, access tokens and signed URLs out of Git and shared screenshots.
 
-## Multipart upload
+## Multipart upload in Bruno
 
-Creating a multipart ticket and presigning URLs do not send any file bytes.
+The helper below splits your local file and creates a folder of Bruno requests.
+You can run each part yourself, or run that folder to send all parts in order.
+It doesn't call AWS or need a token. Allow enough free disk space for another copy
+of the file; the 6 GiB sample needs roughly 6 GiB for its chunks.
 
-1. Create a ticket using the actual file name, type and size. The sample create
-   request declares 10 GiB; replace it with your real file size. The API selects
-   multipart only above its configured single-file threshold.
-2. Split the file into numbered chunks using the returned `partSizeBytes`.
-3. In **Upload Multipart Part To S3**, select the chunk file. Set the runtime variable
-   `multipart_part_number` to its part number (starts at 1), and send. S3 must return
-   200 and an `ETag` header. The script records that ETag for completion. Repeat for
-   every chunk; use **Presign Multipart Part URLs** to request more URLs if needed.
-4. Run **Complete Multipart Upload**. It uses the collected part numbers and ETags;
-   there is no placeholder to replace. The API URL ends in
-   `/transfer-tickets/{{transfer_ticket}}/complete`. Reacquire a JWT if it expires.
+1. Get an Entra token, then run **Create Multipart Upload**. The sample body now
+   matches `sample_6gb.dat`: 6,442,450,944 bytes and `application/octet-stream`.
+   Change the body if you use another file.
+2. Copy `multipart.partSizeBytes` from the response. From the repository root, run:
 
-Upload the entire file before completion; the collection does not prove that all
-bytes match your declaration. Every chunk except the final one must be at least
-5 MiB. An ETag must come from the corresponding S3 PUT, not from the token, ticket
-or presign response. Preserve its surrounding quotes when entering one manually.
+   ```sh
+   python3 scripts/prepare-bruno-multipart.py sample_6gb.dat --part-size 68157440
+   ```
+
+   `68157440` is only an example (65 MiB). Use the exact value from your ticket.
+   The helper writes `_multipart-demo` inside this collection and refuses to
+   overwrite an existing preparation.
+3. Run **Presign Multipart Part URLs**. Its default range covers all parts in the
+   current ticket. For a very large number of parts, request smaller ranges to
+   keep the response manageable. The script keeps the URLs already collected.
+4. Bruno should show **Prepared Multipart Parts**. Refresh the collection if needed.
+   Run that folder in order, or open a part request and send it. Each request already
+   selects its chunk file and part number; no file picker is needed. It checks that
+   the ticket matches the prepared file and part size, then saves S3's ETag on success.
+5. Run **Complete Multipart Upload** after every part has returned 200. It sends the
+   captured ETags and blocks completion if any expected part is missing.
+
+Run the generated folder only, not the whole collection: the collection also contains
+create and abort requests. Keep the current ticket, URLs and ETags in the same Bruno
+collection session. If a part URL expires, presign it again and retry that part.
+A new ticket resets the captured ETags, so don't create another upload midway through.
+
+The helper doesn't require Bruno's developer mode or file-system scripts. Generated
+requests contain relative file paths and use the collection's runtime URL variables.
+The sample file, chunks and generated requests are ignored by Git. Delete
+`mft-upload-test/_multipart-demo` after finishing to recover disk space, or before
+preparing a different ticket/file. Keep the original file until download verification.
+
+The existing **Upload Multipart Part To S3** request remains available when you want
+to choose a chunk and part number manually. Use **Abort Multipart Upload** to cancel
+an unfinished ticket. Don't complete a partially uploaded file.
+
+## Run the whole upload from a terminal
+
+The standalone script handles token acquisition, chunk streaming, part uploads and
+completion. It doesn't create chunk files and prompts for the client secret without
+echoing it:
+
+```sh
+python3 scripts/test-multipart-upload.py sample_6gb.dat \
+  --content-type application/octet-stream
+```
+
+It needs Python 3 with no extra packages and a real file larger than 5 GiB. The script
+uses the development API and products-poc consumer. It refreshes tokens as needed,
+retries transient part-upload failures and prints the transfer ticket. It doesn't
+save tokens, secrets or signed URLs. A failed completion can be ambiguous; inspect
+the ticket before starting again. Scanning, Slack delivery and download/checksum
+verification still happen through the normal file-transfer flow.
