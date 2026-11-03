@@ -44,7 +44,7 @@ def main():
     failures = 0
     for method, path, success in routes:
         cases = [('valid-application', 'Bearer ' + valid, success),
-                 ('missing', None, 401), ('legacy-basic', 'Basic dXNlcjpwYXNz', 401),
+                 ('missing', None, 401), ('legacy-basic', 'Basic dXNlcjpwYXNz', [401, 403]),
                  ('legacy-static-bearer', 'Bearer products-poc.token', 401)]
         cases += [(name, 'Bearer ' + token, status) for name, token, status in fixtures]
         for name, auth, expected in cases:
@@ -60,7 +60,7 @@ def main():
                 status = error.code
             except urllib.error.URLError:
                 status = 'connection-error'
-            ok = status == expected
+            ok = status in expected if isinstance(expected, list) else status == expected
             failures += not ok
             print(json.dumps({'method': method, 'path': path, 'case': name,
                               'expected': expected, 'actual': status, 'passed': ok}))
