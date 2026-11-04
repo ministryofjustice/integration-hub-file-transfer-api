@@ -106,7 +106,7 @@ python3 scripts/test-multipart-upload.py sample_6gb.dat \
   --content-type application/octet-stream
 ```
 
-It needs Python 3 with no extra packages and a real file larger than 5 GiB. The script
+It needs Python 3 with no extra packages and a real file larger than 100 MiB. The script
 uses the development API and products-poc consumer. It refreshes tokens as needed,
 retries transient part-upload failures and prints the transfer ticket. It doesn't
 save tokens, secrets or signed URLs. A failed completion can be ambiguous; inspect

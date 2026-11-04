@@ -129,7 +129,7 @@ def run(path, content_type, secret):
         'requestedExpirySeconds': 3600,
     })
     if 'multipart' not in ticket:
-        raise UploadError('API selected single PUT. For multipart use a real file larger than 5 GiB; do not inflate sizeBytes.')
+        raise UploadError('API selected single PUT. For multipart use a real file larger than 100 MiB; do not inflate sizeBytes.')
     transfer = ticket['transferTicket']
     info = ticket['multipart']
     chunk_size = int(info['partSizeBytes'])
@@ -171,14 +171,14 @@ def run(path, content_type, secret):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('file', type=Path, help='Actual file to upload; larger than 5 GiB for multipart')
+    parser.add_argument('file', type=Path, help='Actual file to upload; larger than 100 MiB for multipart')
     parser.add_argument('--content-type', help='MIME type allowed for products-poc; inferred from filename by default')
     args = parser.parse_args()
     path = args.file.expanduser().resolve()
     if not path.is_file():
         parser.error('File does not exist or is not a regular file')
-    if path.stat().st_size <= 5 * 1024 ** 3:
-        parser.error('Choose an actual file larger than 5 GiB for the current development multipart threshold')
+    if path.stat().st_size <= 100 * 1024 ** 2:
+        parser.error('Choose an actual file larger than 100 MiB for the current development multipart threshold')
     mime = args.content_type or mimetypes.guess_type(path.name)[0] or 'application/octet-stream'
     print(f'File: {path.name}; bytes: {path.stat().st_size:,}; content type: {mime}')
     secret = getpass.getpass('Development consumer client secret (hidden): ')
