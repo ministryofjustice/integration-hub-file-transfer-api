@@ -213,7 +213,7 @@ Do not prefix the variable with another `https://`. Do not use a JSON or multipa
 
 ## Upload a large file in parts
 
-The same ticket request automatically selects multipart when declared size exceeds `SINGLE_PUT_LIMIT_BYTES`. No separate create endpoint or mode field is needed.
+The same ticket request automatically selects multipart when declared size exceeds `SINGLE_PUT_LIMIT_BYTES`. The configured threshold is 100 MiB (104,857,600 bytes): files at or below it use a single PUT, and larger files use multipart. The part size is a separate setting; always use the returned `partSizeBytes`. No separate create endpoint or mode field is needed.
 
 ```mermaid
 sequenceDiagram

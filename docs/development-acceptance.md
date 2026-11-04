@@ -99,7 +99,7 @@ python3 scripts/acceptance-recovery.py /path/to/sample_6gb.dat --check-expiry
 unset ENTRA_ACCESS_TOKEN
 ```
 
-The recovery file must really be larger than 5 GiB. Use a disposable file rather
+The recovery file must really be larger than 100 MiB. Use a disposable file rather
 than customer data. Both scripts use the development API address.
 
 ## Check the downloaded file

@@ -11,7 +11,7 @@ os.environ.setdefault("UPLOAD_BUCKET_NAME", "upload-bucket")
 os.environ.setdefault("UPLOAD_BUCKET_KMS_KEY_ARN", "arn:aws:kms:eu-west-2:111122223333:key/example")
 os.environ.setdefault("PRESIGNED_URL_EXPIRY_SECONDS", "900")
 os.environ.setdefault("MAX_PRESIGNED_URL_EXPIRY_SECONDS", "3600")
-os.environ.setdefault("SINGLE_PUT_LIMIT_BYTES", "5368709120")
+os.environ.setdefault("SINGLE_PUT_LIMIT_BYTES", "104857600")
 os.environ.setdefault("MULTIPART_DEFAULT_PART_SIZE_BYTES", "67108864")
 os.environ.setdefault("MULTIPART_INITIAL_PRESIGN_PARTS", "10")
 os.environ.setdefault("MULTIPART_MAX_PARTS", "10000")
@@ -35,6 +35,15 @@ class FakeClientError(Exception):
 sys.modules["botocore.exceptions"] = SimpleNamespace(ClientError=FakeClientError)
 
 import lambda_function as handler
+
+
+class UploadModeBoundaryTests(unittest.TestCase):
+    def test_single_upload_at_threshold_and_multipart_above_it(self):
+        with patch.object(handler, "SINGLE_PUT_LIMIT_BYTES", 100 * 1024**2):
+            self.assertEqual(handler._select_upload_mode(100 * 1024**2 - 1), "single")
+            self.assertEqual(handler._select_upload_mode(100 * 1024**2), "single")
+            self.assertEqual(handler._select_upload_mode(100 * 1024**2 + 1), "multipart")
+            self.assertEqual(handler._select_upload_mode(1024**3), "multipart")
 
 
 class FakeTable:
