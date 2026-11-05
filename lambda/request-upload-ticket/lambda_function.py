@@ -262,7 +262,7 @@ def _validate_file_size(size_bytes, max_upload_size_bytes):
 
 
 def _select_upload_mode(size_bytes):
-    return "multipart" if size_bytes > SINGLE_PUT_LIMIT_BYTES else "single"
+    return "multipart" if size_bytes >= SINGLE_PUT_LIMIT_BYTES else "single"
 
 
 def _round_up(value, increment):

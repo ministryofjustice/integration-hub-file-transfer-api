@@ -213,7 +213,7 @@ Do not prefix the variable with another `https://`. Do not use a JSON or multipa
 
 ## Upload a large file in parts
 
-The same ticket request automatically selects multipart when declared size exceeds `SINGLE_PUT_LIMIT_BYTES`. No separate create endpoint or mode field is needed.
+The same ticket request automatically selects multipart when declared size reaches `SINGLE_PUT_LIMIT_BYTES`. The configured threshold is 1 GiB (1,073,741,824 bytes): files below it use a single PUT; files at or above it use multipart. The default part size is 100 MiB (104,857,600 bytes), giving eleven parts for a 1 GiB file: ten of 100 MiB and one of 24 MiB. The part size is a separate setting; always use the returned `partSizeBytes`. No separate create endpoint or mode field is needed.
 
 ```mermaid
 sequenceDiagram
@@ -237,7 +237,7 @@ sequenceDiagram
 
 ### Multipart ticket response: HTTP 200
 
-Example: a 6 GiB file with a returned 64 MiB part size has 96 parts. Actual settings may differ. The example shows one initial URL; the server may return more.
+Example: a 6 GiB file with a returned 100 MiB part size has 62 parts. Actual settings may differ. The example shows one initial URL; the server may return more.
 
 ```json
 {
@@ -246,8 +246,8 @@ Example: a 6 GiB file with a returned 64 MiB part size has 96 parts. Actual sett
   "object": {"bucket": "incoming-bucket", "key": "products-poc/uploads/2026/10/15/generated-id.bin"},
   "multipart": {
     "uploadId": "example-s3-upload-id",
-    "partSizeBytes": 67108864,
-    "totalParts": 96,
+    "partSizeBytes": 104857600,
+    "totalParts": 62,
     "maxParts": 10000,
     "expiresInSeconds": 900,
     "initialParts": [
@@ -312,7 +312,7 @@ Use each part's `method`, `url` and `headers`, with no API authentication. S3 re
 }
 ```
 
-This illustrates a two-part completion; the 96-part example requires all 96 entries. The handler sorts parts and rejects duplicate or out-of-range numbers. S3 validates the supplied parts and ETags.
+This illustrates a two-part completion; the 62-part example requires all 62 entries. The handler sorts parts and rejects duplicate or out-of-range numbers. S3 validates the supplied parts and ETags.
 
 HTTP 200 response:
 
