@@ -11,8 +11,8 @@ os.environ.setdefault("UPLOAD_BUCKET_NAME", "upload-bucket")
 os.environ.setdefault("UPLOAD_BUCKET_KMS_KEY_ARN", "arn:aws:kms:eu-west-2:111122223333:key/example")
 os.environ.setdefault("PRESIGNED_URL_EXPIRY_SECONDS", "900")
 os.environ.setdefault("MAX_PRESIGNED_URL_EXPIRY_SECONDS", "3600")
-os.environ.setdefault("SINGLE_PUT_LIMIT_BYTES", "104857600")
-os.environ.setdefault("MULTIPART_DEFAULT_PART_SIZE_BYTES", "67108864")
+os.environ.setdefault("SINGLE_PUT_LIMIT_BYTES", "1073741824")
+os.environ.setdefault("MULTIPART_DEFAULT_PART_SIZE_BYTES", "104857600")
 os.environ.setdefault("MULTIPART_INITIAL_PRESIGN_PARTS", "10")
 os.environ.setdefault("MULTIPART_MAX_PARTS", "10000")
 
@@ -38,12 +38,20 @@ import lambda_function as handler
 
 
 class UploadModeBoundaryTests(unittest.TestCase):
-    def test_single_upload_at_threshold_and_multipart_above_it(self):
-        with patch.object(handler, "SINGLE_PUT_LIMIT_BYTES", 100 * 1024**2):
-            self.assertEqual(handler._select_upload_mode(100 * 1024**2 - 1), "single")
-            self.assertEqual(handler._select_upload_mode(100 * 1024**2), "single")
-            self.assertEqual(handler._select_upload_mode(100 * 1024**2 + 1), "multipart")
+    def test_multipart_starts_at_one_gib(self):
+        with patch.object(handler, "SINGLE_PUT_LIMIT_BYTES", 1024**3):
+            self.assertEqual(handler._select_upload_mode(1024**3 - 1), "single")
             self.assertEqual(handler._select_upload_mode(1024**3), "multipart")
+            self.assertEqual(handler._select_upload_mode(1024**3 + 1), "multipart")
+            self.assertEqual(handler._select_upload_mode(1024**3), "multipart")
+
+    def test_one_gib_uses_100_mib_parts(self):
+        with patch.object(handler, "MULTIPART_DEFAULT_PART_SIZE_BYTES", 100 * 1024**2):
+            part_size, error = handler._resolve_part_size_bytes(1024**3)
+        self.assertIsNone(error)
+        self.assertEqual(part_size, 104857600)
+        self.assertEqual((1024**3 + part_size - 1) // part_size, 11)
+        self.assertEqual(1024**3 % part_size, 24 * 1024**2)
 
 
 class FakeTable:

@@ -1,4 +1,4 @@
-"""Real development multipart recovery tests. Uses an actual file >100 MiB; streams it once.
+"""Real development multipart recovery tests. Uses an actual file >=1 GiB; streams it once.
 
 May create a clean file and Slack notification. Does not verify downstream checksums.
 """
@@ -198,8 +198,8 @@ def main():
     parser.add_argument('--report', default='recovery-results.json')
     parser.add_argument('--verify-download', type=Path, help='Only compare this collected file with the source and update the existing report; no network calls')
     args = parser.parse_args()
-    if not args.file.is_file() or args.file.stat().st_size <= 100 * 1024**2:
-        parser.error('Supply an actual file larger than 100 MiB; do not inflate the declared size')
+    if not args.file.is_file() or args.file.stat().st_size < 1024**3:
+        parser.error('Supply an actual file at least 1 GiB; do not inflate the declared size')
     report = Report(args.report)
     if args.verify_download:
         if not args.verify_download.is_file() or not report.path.is_file():
