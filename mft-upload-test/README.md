@@ -64,10 +64,10 @@ of the file; the 6 GiB sample needs roughly 6 GiB for its chunks.
 2. Copy `multipart.partSizeBytes` from the response. From the repository root, run:
 
    ```sh
-   python3 scripts/prepare-bruno-multipart.py sample_6gb.dat --part-size 68157440
+   python3 scripts/prepare-bruno-multipart.py sample_6gb.dat --part-size 104857600
    ```
 
-   `68157440` is only an example (65 MiB). Use the exact value from your ticket.
+   `104857600` is only an example (100 MiB). Use the exact value from your ticket.
    The helper writes `_multipart-demo` inside this collection and refuses to
    overwrite an existing preparation.
 3. Run **Presign Multipart Part URLs**. Its default range covers all parts in the
@@ -106,7 +106,7 @@ python3 scripts/test-multipart-upload.py sample_6gb.dat \
   --content-type application/octet-stream
 ```
 
-It needs Python 3 with no extra packages and a real file larger than 100 MiB. The script
+It needs Python 3 with no extra packages and a real file at least 1 GiB. The script
 uses the development API and products-poc consumer. It refreshes tokens as needed,
 retries transient part-upload failures and prints the transfer ticket. It doesn't
 save tokens, secrets or signed URLs. A failed completion can be ambiguous; inspect

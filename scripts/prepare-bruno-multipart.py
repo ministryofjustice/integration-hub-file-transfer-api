@@ -117,8 +117,8 @@ def main():
     parser.add_argument('--part-size', type=int, required=True, help='Exact partSizeBytes from the multipart ticket')
     args = parser.parse_args()
     source = args.file.expanduser()
-    if not source.is_file() or source.stat().st_size <= 100 * 1024**2:
-        parser.error('Choose the actual file larger than 100 MiB used in the multipart ticket')
+    if not source.is_file() or source.stat().st_size < 1024**3:
+        parser.error('Choose the actual file at least 1 GiB used in the multipart ticket')
     try:
         output, count = prepare(source, args.part_size)
     except (OSError, ValueError) as error:
