@@ -17,3 +17,7 @@ terraform.tfstate
 security-results.json
 recovery-results.json
 operations-results.json
+
+# Large local upload fixture and generated Bruno chunks/requests
+/sample_6gb.dat
+/mft-upload-test/_multipart-demo/

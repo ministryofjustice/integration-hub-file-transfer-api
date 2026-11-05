@@ -25,3 +25,4 @@ jobs:
           python -m unittest discover -s lambda/request-docs -p 'test_lambda_function.py'
           python -m unittest discover -s scripts -p 'test_smoke_github_entra.py'
           python -m unittest discover -s scripts -p 'test_acceptance.py'
+          python -m unittest discover -s scripts -p 'test_multipart_helpers.py'

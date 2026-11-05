@@ -27,5 +27,10 @@ script:pre-request {
   if (!parts.length) {
     throw new Error("Upload each part to S3 first. Completion needs S3's returned ETags.");
   }
-  req.setBody({parts: [...parts].sort((a, b) => a.partNumber - b.partNumber)});
+  const ordered = [...parts].sort((a, b) => a.partNumber - b.partNumber);
+  const expected = Number(bru.getVar("multipart_total_parts"));
+  if (expected && (ordered.length !== expected || ordered.some((part, index) => part.partNumber !== index + 1))) {
+    throw new Error("Some parts have not uploaded successfully. Upload every part before completion.");
+  }
+  req.setBody({parts: ordered});
 }
